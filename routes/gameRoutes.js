@@ -12,7 +12,14 @@ const router = Router();
 
 // POST /api/game/start -> initializes a new session
 router.post("/start", startGame);
-
+router.post("/report", async (req, res, next) => {
+  try {
+    const { sessionId, report } = req.body;
+    res.json({ message: "Report received" });
+  } catch (err) {
+    next(err);
+  }
+});
 // POST /api/game/:sessionId -> continue an existing session
 router.post("/:sessionId", continueGame);
 
@@ -27,14 +34,7 @@ router.post("/test", testOutput);
 
 // POST /api/game/test-matching -> test disease matching functionality
 router.post("/test-matching", testMatching);
-router.post("/report", async (req, res, next) => {
-  try {
-    
-    res.json({ message: "Report received" });
-  } catch (err) {
-    next(err);
-  }
-});
+
 
 
 export default router;
