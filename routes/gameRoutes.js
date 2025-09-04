@@ -5,6 +5,7 @@ import {
   testOutput,
   getConfig,
   testMatching,
+  getVarietyStats,
 } from "../controllers/gameController.js";
 
 const router = Router();
@@ -16,6 +17,7 @@ router.post("/start", startGame);
 router.post("/:sessionId", continueGame);
 
 // GET /api/game/history -> get game history for debugging variety
+router.get("/history", getVarietyStats);
 
 // GET /api/game/config -> get current configuration
 router.get("/config", getConfig);
@@ -25,5 +27,14 @@ router.post("/test", testOutput);
 
 // POST /api/game/test-matching -> test disease matching functionality
 router.post("/test-matching", testMatching);
+router.post("/report", async (req, res, next) => {
+  try {
+    
+    res.json({ message: "Report received" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 
 export default router;
