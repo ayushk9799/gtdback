@@ -200,10 +200,37 @@ export const resetGameplay = async (req, res, next) => {
 export const submitSelections = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { diagnosisIndex, testIndices, treatmentIndices, penaltiesDelta, complete } = req.body || {};
+    const { userId, caseId, diagnosisIndex, testIndices, treatmentIndices, penaltiesDelta, complete } = req.body || {};
 
-    const gameplay = await Gameplay.findById(id);
-    if (!gameplay) return res.status(404).json({ error: "Gameplay not found" });
+    let gameplay = null;
+
+    // If an id is provided, attempt to load it
+    if (id) {
+      gameplay = await Gameplay.findById(id);
+      if (!gameplay && (!userId || !caseId)) {
+        return res.status(404).json({ error: "Gameplay not found. Provide userId and caseId to create one." });
+      }
+    }
+
+    // If no gameplay loaded, ensure userId and caseId are present and upsert
+    if (!gameplay) {
+      if (!userId || !caseId) {
+        return res.status(400).json({ error: "userId and caseId are required when gameplay id is not found or not provided" });
+      }
+
+      // Validate references exist
+      const [userExists, caseExists] = await Promise.all([
+        User.exists({ _id: userId }),
+        Case.exists({ _id: caseId }),
+      ]);
+      if (!userExists) return res.status(404).json({ error: "User not found" });
+      if (!caseExists) return res.status(404).json({ error: "Case not found" });
+
+      gameplay = await Gameplay.findOne({ userId, caseId });
+      if (!gameplay) {
+        gameplay = await Gameplay.create({ userId, caseId });
+      }
+    }
 
     // Diagnosis
     if (typeof diagnosisIndex === "number" && Number.isFinite(diagnosisIndex)) {
@@ -238,6 +265,7 @@ export const submitSelections = async (req, res, next) => {
     // Optional penalties
     if (typeof penaltiesDelta === "number") {
       gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
+      gameplay.history.push({ type: "penalty", deltaPoints: penaltiesDelta });
     }
 
     gameplay.points = computeTotals(gameplay.points);

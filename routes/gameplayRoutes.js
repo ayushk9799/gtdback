@@ -19,9 +19,10 @@ router.get("/:id", getGameplay);
 router.patch("/:id/diagnosis", setDiagnosis);
 router.patch("/:id/tests", addTestSelection);
 router.patch("/:id/treatment", addTreatmentSelection);
+// Allow submission without a gameplay id by using body (userId, caseId)
+router.post("/submit", submitSelections);
 router.post("/:id/complete", completeGameplay);
 router.patch("/:id/reset", resetGameplay);
-router.post("/:id/submit", submitSelections);
 
 export default router;
 
