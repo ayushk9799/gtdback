@@ -19,6 +19,20 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ["Male", "Female"],
   },
+  completedCases: [{
+    case:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Case",
+    },
+    gameplay:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Gameplay",
+    },
+    
+  }],
+  fcmToken: {
+    type: String,
+  },
 }, { timestamps: true });
 
 const User = mongoose.model("User", UserSchema);
