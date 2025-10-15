@@ -45,4 +45,27 @@ export const getNextCasesPerDepartment = async (req, res, next) => {
   }
 };
 
+export const getUser = async (req, res, next) => {
+  console.log(req.params);
+  
+  try {
+    const { userID } = req.params;
+    const user = await User.findById(userID);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.status(200).json(user);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateUser = async (req, res, next) => {
+  try {
+    const { userID } = req.params;
+    const { user } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(userID, user, { new: true });
+    res.status(200).json(updatedUser);
+  } catch (err) {
+    next(err);
+  }
+};
 
