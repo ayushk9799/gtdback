@@ -200,7 +200,7 @@ export const resetGameplay = async (req, res, next) => {
 export const submitSelections = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { userId, caseId, diagnosisIndex, testIndices, treatmentIndices, penaltiesDelta, complete } = req.body || {};
+    const { userId, caseId, diagnosisIndex, testIndices, treatmentIndices, penaltiesDelta, complete, points } = req.body || {};
 
     let gameplay = null;
 
@@ -232,43 +232,46 @@ export const submitSelections = async (req, res, next) => {
       }
     }
 
-    // Diagnosis
+    // Diagnosis (store selection only; no history in submit)
     if (typeof diagnosisIndex === "number" && Number.isFinite(diagnosisIndex)) {
       gameplay.selections.diagnosisIndex = diagnosisIndex;
-      gameplay.history.push({ type: "diagnosis", index: diagnosisIndex, deltaPoints: 0 });
     }
 
-    // Tests (dedupe)
+    // Tests (dedupe; no history in submit)
     if (Array.isArray(testIndices)) {
       for (const idx of testIndices) {
         if (typeof idx === "number" && Number.isFinite(idx)) {
           if (!gameplay.selections.testIndices.includes(idx)) {
             gameplay.selections.testIndices.push(idx);
           }
-          gameplay.history.push({ type: "test", index: idx, deltaPoints: 0 });
         }
       }
     }
 
-    // Treatments (dedupe)
+    // Treatments (dedupe; no history in submit)
     if (Array.isArray(treatmentIndices)) {
       for (const idx of treatmentIndices) {
         if (typeof idx === "number" && Number.isFinite(idx)) {
           if (!gameplay.selections.treatmentIndices.includes(idx)) {
             gameplay.selections.treatmentIndices.push(idx);
           }
-          gameplay.history.push({ type: "treatment", index: idx, deltaPoints: 0 });
         }
       }
     }
 
-    // Optional penalties
+    // Optional penalties (kept for compatibility); no history in submit
     if (typeof penaltiesDelta === "number") {
       gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
-      gameplay.history.push({ type: "penalty", deltaPoints: penaltiesDelta });
     }
 
-    gameplay.points = computeTotals(gameplay.points);
+    // If frontend provided normalized points, persist as-is (frontend-only scoring)
+    if (points && typeof points === "object") {
+      const { total = 0, diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points;
+      gameplay.points = { total, diagnosis, tests, treatment, penalties };
+    } else {
+      // Fallback to maintaining totals if points not provided
+      gameplay.points = computeTotals(gameplay.points);
+    }
 
     // Optionally complete
     if (complete) {

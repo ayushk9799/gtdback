@@ -8,13 +8,15 @@ const router = Router();
 // Google authentication route
 router.post("/google/loginSignUp", async (req, res) => {
   try {
-    const { token , platfrom} = req.body;
+    const { token , platform} = req.body;
+    // console.log("token", token);
+    // console.log("platform", platform);
 
     if (!token) {
       return res.status(400).json({ error: "Token is required" });
     }
     let client;
-    if (platfrom === "android") {
+    if (platform === "android") {
        client = new OAuth2Client(
         "125181194595-uautevfk4s33h57gi28hougs7lruet70.apps.googleusercontent.com"
       );
@@ -28,12 +30,12 @@ router.post("/google/loginSignUp", async (req, res) => {
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience:
-        platfrom === "android" ? "125181194595-uautevfk4s33h57gi28hougs7lruet70.apps.googleusercontent.com" : "125181194595-joc9v9367fldq9qigu2bh9uoosq4u67d.apps.googleusercontent.com",
+        platform === "android" ? "125181194595-uautevfk4s33h57gi28hougs7lruet70.apps.googleusercontent.com" : "125181194595-joc9v9367fldq9qigu2bh9uoosq4u67d.apps.googleusercontent.com",
     });
-    console.log("ticket", ticket);
+    // console.log("ticket", ticket);
 
     const payload = ticket.getPayload();
-    console.log("payload", payload);
+    // console.log("payload", payload);
 
     // Check if user exists
     let user = await User.findOne({ email: payload.email });

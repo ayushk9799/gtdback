@@ -60,6 +60,8 @@ export const getUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
+    console.log('working here');
+    
     const { userID } = req.params;
     const { user } = req.body;
     const updatedUser = await User.findByIdAndUpdate(userID, user, { new: true });
