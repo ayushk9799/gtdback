@@ -44,6 +44,6 @@ app.use("*", (req, res) => res.status(404).json({ msg: "Not found" }));
 // Error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3004;
+const PORT = process.env.PORT || 3002;
 
 app.listen(PORT, () => {});

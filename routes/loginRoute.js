@@ -9,8 +9,8 @@ const router = Router();
 router.post("/google/loginSignUp", async (req, res) => {
   try {
     const { token , platform} = req.body;
-    console.log("token", token);
-    console.log("platform", platform);
+    // console.log("token", token);
+    // console.log("platform", platform);
 
     if (!token) {
       return res.status(400).json({ error: "Token is required" });
@@ -32,10 +32,10 @@ router.post("/google/loginSignUp", async (req, res) => {
       audience:
         platform === "android" ? "125181194595-uautevfk4s33h57gi28hougs7lruet70.apps.googleusercontent.com" : "125181194595-joc9v9367fldq9qigu2bh9uoosq4u67d.apps.googleusercontent.com",
     });
-    console.log("ticket", ticket);
+    // console.log("ticket", ticket);
 
     const payload = ticket.getPayload();
-    console.log("payload", payload);
+    // console.log("payload", payload);
 
     // Check if user exists
     let user = await User.findOne({ email: payload.email });
