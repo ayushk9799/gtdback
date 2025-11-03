@@ -1,5 +1,5 @@
-[
-    {
+[   {"date":"2025-10-17", 
+   "case": {
       "caseId": "ACS001",
       "caseTitle": "58-Year-Old with Crushing Chest Pain",
       "caseCategory": "Cardiology",
@@ -135,8 +135,11 @@
           }
         }
       ]
-    },
-    {
+    }
+  },
+  {"date":"2025-10-18", 
+   "case": {
+    
       "caseId": "SLE001",
       "caseTitle": "28-Year-Old with Fatigue, Joint Pain, and Rash",
       "caseCategory": "Rheumatology",
@@ -270,8 +273,9 @@
           }
         }
       ]
-    },
-    {
+    }},
+    {"date":"2025-10-19", 
+    "case": {
       "caseId": "RA001",
       "caseTitle": "45-Year-Old with Painful, Swollen Hands",
       "caseCategory": "Rheumatology",
@@ -403,8 +407,9 @@
           }
         }
       ]
-    },
-    {
+    }},
+    {"date":"2025-10-20", 
+    "case": {
       "caseId": "LYME001",
       "caseTitle": "34-Year-Old Hiker with Fever, Aches, and a Rash",
       "caseCategory": "Infectious Disease",
@@ -531,8 +536,9 @@
           }
         }
       ]
-    },
-    {
+    }},
+    {"date":"2025-10-21", 
+    "case": {
       "caseId": "CKD001",
       "caseTitle": "65-Year-Old with Worsening Fatigue and Swollen Legs",
       "caseCategory": "Nephrology",
@@ -666,5 +672,5 @@
           }
         }
       ]
-    }
+    }}
   ]

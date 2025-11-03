@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import Gameplay from "./Gameplay.js";
 
 const UserSchema = new mongoose.Schema({
   name: {
@@ -34,6 +35,43 @@ const UserSchema = new mongoose.Schema({
     type: String,
   },
 }, { timestamps: true });
+
+// Static: Return brief gameplay list for a user with minimal case info
+UserSchema.statics.listGameplayBrief = async function(userId, status) {
+  if (!userId) throw new Error("userId is required");
+  const filter = { userId };
+  if (status) filter.status = status;
+
+  const items = await Gameplay.find(filter)
+    .sort({ createdAt: -1 })
+    .populate({ path: "caseId", select: "caseData caseTitle caseCategory" })
+    .lean();
+
+  return items.map((gp) => {
+    const caseDoc = gp.caseId || {};
+    const caseData = caseDoc.caseData || {};
+    const title = caseDoc.caseTitle || caseData.caseTitle || "";
+    const category = caseDoc.caseCategory || caseData.caseCategory || "";
+    let correctDiagnosis = "";
+    try {
+      const diags = (caseData.steps?.[2]?.data?.diagnosisOptions) || [];
+      const correct = diags.find((d) => d && d.isCorrect);
+      correctDiagnosis = correct?.diagnosisName || "";
+    } catch (_) {}
+
+    return {
+      gameplayId: gp._id,
+      status: gp.status,
+      createdAt: gp.createdAt,
+      case: {
+        id: caseDoc._id,
+        title,
+        category,
+        correctDiagnosis,
+      },
+    };
+  });
+};
 
 const User = mongoose.model("User", UserSchema);
 

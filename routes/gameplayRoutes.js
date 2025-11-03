@@ -3,6 +3,7 @@ import {
   startOrGetGameplay,
   getGameplay,
   listGameplays,
+  listGameplayBrief,
   setDiagnosis,
   addTestSelection,
   addTreatmentSelection,
@@ -15,6 +16,7 @@ const router = Router();
 
 router.post("/", startOrGetGameplay);
 router.get("/", listGameplays);
+router.get("/brief", listGameplayBrief);
 router.get("/:id", getGameplay);
 router.patch("/:id/diagnosis", setDiagnosis);
 router.patch("/:id/tests", addTestSelection);

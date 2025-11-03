@@ -10,6 +10,7 @@ import mongoose from "mongoose";
 import gameplayRoutes from "./routes/gameplayRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import progressRoutes from "./routes/progressRoutes.js";
+import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 dotenv.config({ path: "./config/config.env" });
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/cases", caseRoutes);
 app.use("/api/gameplays", gameplayRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api", progressRoutes);
+app.use("/api/daily-challenge", dailyChallengeRoutes);
 
 app.use("*", (req, res) => res.status(404).json({ msg: "Not found" }));
 

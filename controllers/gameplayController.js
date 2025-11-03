@@ -62,6 +62,19 @@ export const listGameplays = async (req, res, next) => {
   }
 };
 
+// GET /api/gameplays/brief?userId=&status=
+export const listGameplayBrief = async (req, res, next) => {
+  try {
+    const { userId, status } = req.query || {};
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+    // Delegate to User model helper for consistency
+    const items = await User.listGameplayBrief(userId, status);
+    res.json({ success: true, items });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PATCH /api/gameplays/:id/diagnosis
 export const setDiagnosis = async (req, res, next) => {
   try {
