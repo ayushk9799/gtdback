@@ -161,6 +161,17 @@ export const completeGameplay = async (req, res, next) => {
     const gameplay = await Gameplay.findById(id);
     if (!gameplay) return res.status(404).json({ error: "Gameplay not found" });
 
+    // Snapshot before change to compute delta for cumulative points. If this is
+    // the first time completing, baseline will be zeros below.
+    const wasCompletedBefore = gameplay.status === "completed";
+    const prevPoints = {
+      total: gameplay.points?.total || 0,
+      diagnosis: gameplay.points?.diagnosis || 0,
+      tests: gameplay.points?.tests || 0,
+      treatment: gameplay.points?.treatment || 0,
+      penalties: gameplay.points?.penalties || 0,
+    };
+
     if (typeof penaltiesDelta === "number") {
       gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
     }
@@ -168,6 +179,28 @@ export const completeGameplay = async (req, res, next) => {
     gameplay.status = "completed";
     gameplay.completedAt = new Date();
     await gameplay.save();
+
+    // Update cumulative points: if first completion, add full; else add delta
+    try {
+      const newPoints = {
+        total: gameplay.points?.total || 0,
+        diagnosis: gameplay.points?.diagnosis || 0,
+        tests: gameplay.points?.tests || 0,
+        treatment: gameplay.points?.treatment || 0,
+        penalties: gameplay.points?.penalties || 0,
+      };
+      const baseline = wasCompletedBefore
+        ? prevPoints
+        : { total: 0, diagnosis: 0, tests: 0, treatment: 0, penalties: 0 };
+      const inc = {
+        "cumulativePoints.total": newPoints.total - baseline.total,
+        "cumulativePoints.diagnosis": newPoints.diagnosis - baseline.diagnosis,
+        "cumulativePoints.tests": newPoints.tests - baseline.tests,
+        "cumulativePoints.treatment": newPoints.treatment - baseline.treatment,
+        "cumulativePoints.penalties": newPoints.penalties - baseline.penalties,
+      };
+      await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
+    } catch (_) {}
 
     // Upsert into User.completedCases for quick lookup
     try {
@@ -245,6 +278,16 @@ export const submitSelections = async (req, res, next) => {
       }
     }
 
+    // Snapshot prior state for delta computation against User.cumulativePoints
+    const wasCompletedBefore = gameplay.status === "completed";
+    const prevPoints = {
+      total: gameplay.points?.total || 0,
+      diagnosis: gameplay.points?.diagnosis || 0,
+      tests: gameplay.points?.tests || 0,
+      treatment: gameplay.points?.treatment || 0,
+      penalties: gameplay.points?.penalties || 0,
+    };
+
     // Diagnosis (store selection only; no history in submit)
     if (typeof diagnosisIndex === "number" && Number.isFinite(diagnosisIndex)) {
       gameplay.selections.diagnosisIndex = diagnosisIndex;
@@ -293,6 +336,34 @@ export const submitSelections = async (req, res, next) => {
     }
 
     await gameplay.save();
+
+    // Update User.cumulativePoints only when this call represents a completed state.
+    // If completing for the first time, add full points. If already completed, add only the delta.
+    if (complete) {
+      try {
+        const newPoints = {
+          total: gameplay.points?.total || 0,
+          diagnosis: gameplay.points?.diagnosis || 0,
+          tests: gameplay.points?.tests || 0,
+          treatment: gameplay.points?.treatment || 0,
+          penalties: gameplay.points?.penalties || 0,
+        };
+
+        const baseline = wasCompletedBefore
+          ? prevPoints
+          : { total: 0, diagnosis: 0, tests: 0, treatment: 0, penalties: 0 };
+
+        const inc = {
+          "cumulativePoints.total": newPoints.total - baseline.total,
+          "cumulativePoints.diagnosis": newPoints.diagnosis - baseline.diagnosis,
+          "cumulativePoints.tests": newPoints.tests - baseline.tests,
+          "cumulativePoints.treatment": newPoints.treatment - baseline.treatment,
+          "cumulativePoints.penalties": newPoints.penalties - baseline.penalties,
+        };
+
+        await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
+      } catch (_) {}
+    }
 
     if (complete) {
       try {

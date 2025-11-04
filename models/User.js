@@ -20,6 +20,13 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ["Male", "Female"],
   },
+  cumulativePoints: {
+    total: { type: Number, default: 0 },
+    diagnosis: { type: Number, default: 0 },
+    tests: { type: Number, default: 0 },
+    treatment: { type: Number, default: 0 },
+    penalties: { type: Number, default: 0 },
+  },
   completedCases: [{
     case:{
       type: mongoose.Schema.Types.ObjectId,
