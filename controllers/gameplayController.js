@@ -1,11 +1,53 @@
 import Gameplay from "../models/Gameplay.js";
 import Case from "../models/Case.js";
 import User from "../models/User.js";
+import TopUser from "../models/TopUser.js";
 
 function computeTotals(points) {
   const { diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points || {};
   const total = (diagnosis || 0) + (tests || 0) + (treatment || 0) - (penalties || 0);
   return { ...points, total };
+}
+
+async function updateLeaderboardForUser(userId) {
+  // Fetch user score
+  const user = await User.findById(userId).select("cumulativePoints.total inTop10").lean();
+  if (!user) return;
+  
+  const newScore = user.cumulativePoints?.total || 0;
+
+  // Update user's score in TopUser
+  await TopUser.updateOne(
+    { userId },
+    { $set: { score: newScore } },
+    { upsert: true }
+  );
+
+  // Get top 10 user IDs after the update
+  const top10UserIds = await TopUser.find()
+    .sort({ score: -1, _id: 1 })
+    .limit(10)
+    .select("userId")
+    .lean()
+    .then(docs => docs.map(d => d.userId));
+
+  // Bulk update User.inTop10 flags in a single operation
+  if (top10UserIds.length > 0) {
+    await User.bulkWrite([
+      {
+        updateMany: {
+          filter: { _id: { $in: top10UserIds }, inTop10: { $ne: true } },
+          update: { $set: { inTop10: true } }
+        }
+      },
+      {
+        updateMany: {
+          filter: { _id: { $nin: top10UserIds }, inTop10: true },
+          update: { $set: { inTop10: false } }
+        }
+      }
+    ]);
+  }
 }
 
 // POST /api/gameplays -> start or get existing gameplay
@@ -164,13 +206,7 @@ export const completeGameplay = async (req, res, next) => {
     // Snapshot before change to compute delta for cumulative points. If this is
     // the first time completing, baseline will be zeros below.
     const wasCompletedBefore = gameplay.status === "completed";
-    const prevPoints = {
-      total: gameplay.points?.total || 0,
-      diagnosis: gameplay.points?.diagnosis || 0,
-      tests: gameplay.points?.tests || 0,
-      treatment: gameplay.points?.treatment || 0,
-      penalties: gameplay.points?.penalties || 0,
-    };
+    const prevTotal = gameplay.points?.total || 0;
 
     if (typeof penaltiesDelta === "number") {
       gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
@@ -182,24 +218,11 @@ export const completeGameplay = async (req, res, next) => {
 
     // Update cumulative points: if first completion, add full; else add delta
     try {
-      const newPoints = {
-        total: gameplay.points?.total || 0,
-        diagnosis: gameplay.points?.diagnosis || 0,
-        tests: gameplay.points?.tests || 0,
-        treatment: gameplay.points?.treatment || 0,
-        penalties: gameplay.points?.penalties || 0,
-      };
-      const baseline = wasCompletedBefore
-        ? prevPoints
-        : { total: 0, diagnosis: 0, tests: 0, treatment: 0, penalties: 0 };
-      const inc = {
-        "cumulativePoints.total": newPoints.total - baseline.total,
-        "cumulativePoints.diagnosis": newPoints.diagnosis - baseline.diagnosis,
-        "cumulativePoints.tests": newPoints.tests - baseline.tests,
-        "cumulativePoints.treatment": newPoints.treatment - baseline.treatment,
-        "cumulativePoints.penalties": newPoints.penalties - baseline.penalties,
-      };
+      const newTotal = gameplay.points?.total || 0;
+      const baselineTotal = wasCompletedBefore ? prevTotal : 0;
+      const inc = { "cumulativePoints.total": newTotal - baselineTotal };
       await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
+      await updateLeaderboardForUser(gameplay.userId);
     } catch (_) {}
 
     // Upsert into User.completedCases for quick lookup
@@ -280,13 +303,7 @@ export const submitSelections = async (req, res, next) => {
 
     // Snapshot prior state for delta computation against User.cumulativePoints
     const wasCompletedBefore = gameplay.status === "completed";
-    const prevPoints = {
-      total: gameplay.points?.total || 0,
-      diagnosis: gameplay.points?.diagnosis || 0,
-      tests: gameplay.points?.tests || 0,
-      treatment: gameplay.points?.treatment || 0,
-      penalties: gameplay.points?.penalties || 0,
-    };
+    const prevTotal = gameplay.points?.total || 0;
 
     // Diagnosis (store selection only; no history in submit)
     if (typeof diagnosisIndex === "number" && Number.isFinite(diagnosisIndex)) {
@@ -341,27 +358,11 @@ export const submitSelections = async (req, res, next) => {
     // If completing for the first time, add full points. If already completed, add only the delta.
     if (complete) {
       try {
-        const newPoints = {
-          total: gameplay.points?.total || 0,
-          diagnosis: gameplay.points?.diagnosis || 0,
-          tests: gameplay.points?.tests || 0,
-          treatment: gameplay.points?.treatment || 0,
-          penalties: gameplay.points?.penalties || 0,
-        };
-
-        const baseline = wasCompletedBefore
-          ? prevPoints
-          : { total: 0, diagnosis: 0, tests: 0, treatment: 0, penalties: 0 };
-
-        const inc = {
-          "cumulativePoints.total": newPoints.total - baseline.total,
-          "cumulativePoints.diagnosis": newPoints.diagnosis - baseline.diagnosis,
-          "cumulativePoints.tests": newPoints.tests - baseline.tests,
-          "cumulativePoints.treatment": newPoints.treatment - baseline.treatment,
-          "cumulativePoints.penalties": newPoints.penalties - baseline.penalties,
-        };
-
+        const newTotal = gameplay.points?.total || 0;
+        const baselineTotal = wasCompletedBefore ? prevTotal : 0;
+        const inc = { "cumulativePoints.total": newTotal - baselineTotal };
         await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
+        await updateLeaderboardForUser(gameplay.userId);
       } catch (_) {}
     }
 

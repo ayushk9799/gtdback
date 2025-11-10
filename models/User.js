@@ -22,10 +22,12 @@ const UserSchema = new mongoose.Schema({
   },
   cumulativePoints: {
     total: { type: Number, default: 0 },
-    diagnosis: { type: Number, default: 0 },
-    tests: { type: Number, default: 0 },
-    treatment: { type: Number, default: 0 },
-    penalties: { type: Number, default: 0 },
+   
+  },
+  inTop10: {
+    type: Boolean,
+    default: false,
+    index: true,
   },
   completedCases: [{
     case:{
