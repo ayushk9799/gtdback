@@ -1,0 +1,121 @@
+import { admin } from '../config/firebase-config.js';
+
+export async function sendToToken(token, title, body, data = {}, imageUrl) {  
+  const message = {
+    token, // device registration token
+    notification: { title, body, imageUrl },
+    data,               // optional key-value payload (strings)
+    android: { 
+      priority: 'high',
+      notification: imageUrl ? { imageUrl } : undefined
+    }, // optional platform fields
+    apns: { 
+      headers: { 'apns-priority': '10' },
+      fcm_options: imageUrl ? { image: imageUrl } : undefined
+    },
+  };
+
+  try {
+    const resp = await admin.messaging().send(message);
+    console.log('Message sent:', resp);
+    return resp;
+  } catch (err) {
+    console.error('Send error:', err);
+    // Handle invalid tokens
+    if (
+      err.code === 'messaging/registration-token-not-registered' ||
+      (err.errorInfo && err.errorInfo.code === 'messaging/registration-token-not-registered')
+    ) {
+      // Remove token from DB
+      console.log('Token not registered — delete from DB.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Send a push notification to multiple device tokens (up to 500).
+ * Returns per-token results and a list of tokens that should be removed.
+ */
+export async function sendToTokens(tokens = [], title, body, data = {}, imageUrl) {
+  if (!Array.isArray(tokens) || tokens.length === 0) {
+    return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
+  }
+
+  const message = {
+    tokens,
+    notification: { title, body, imageUrl },
+    data,
+    android: { 
+      priority: 'high',
+      notification: imageUrl ? { imageUrl } : undefined
+    },
+    apns: { 
+      headers: { 'apns-priority': '10' },
+      fcm_options: imageUrl ? { image: imageUrl } : undefined
+    },
+  };
+
+  try {
+    const resp = await admin.messaging().sendEachForMulticast(message);
+    const invalidTokens = [];
+
+    resp.responses.forEach((r, idx) => {
+      if (!r.success) {
+        const err = r.error;
+        const isUnregistered =
+          err?.code === 'messaging/registration-token-not-registered' ||
+          err?.errorInfo?.code === 'messaging/registration-token-not-registered';
+        if (isUnregistered) {
+          invalidTokens.push(tokens[idx]);
+        }
+      }
+    });
+
+    if (invalidTokens.length > 0) {
+      console.log(`Unregistered tokens (${invalidTokens.length}) — delete from DB.`);
+    }
+
+    return {
+      successCount: resp.successCount,
+      failureCount: resp.failureCount,
+      invalidTokens,
+      responses: resp.responses,
+    };
+  } catch (err) {
+    console.error('Batch send error:', err);
+    throw err;
+  }
+}
+
+/**
+ * Send a push notification to a topic subscribers.
+ */
+export async function sendToTopic(topic, title, body, data = {}, imageUrl) {
+  if (!topic) {
+    throw new Error('Topic is required');
+  }
+
+  const message = {
+    topic,
+    notification: { title, body, imageUrl },
+    data,
+    android: { 
+      priority: 'high',
+      notification: imageUrl ? { imageUrl } : undefined
+    },
+    apns: { 
+      headers: { 'apns-priority': '10' },
+      fcm_options: imageUrl ? { image: imageUrl } : undefined
+    },
+  };
+
+  try {
+    const resp = await admin.messaging().send(message);
+    console.log('Topic message sent:', resp);
+    return resp;
+  } catch (err) {
+    console.error('Topic send error:', err);
+    throw err;
+  }
+}

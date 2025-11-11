@@ -12,6 +12,7 @@ import userRoutes from "./routes/userRoutes.js";
 import progressRoutes from "./routes/progressRoutes.js";
 import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 dotenv.config({ path: "./config/config.env" });
 
 const app = express();
@@ -40,7 +41,7 @@ app.use("/api/users", userRoutes);
 app.use("/api", progressRoutes);
 app.use("/api/daily-challenge", dailyChallengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
-
+app.use("/api/notification", notificationRoutes);
 app.use("*", (req, res) => res.status(404).json({ msg: "Not found" }));
 
 // Error handler
