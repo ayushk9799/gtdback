@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "fix:caseNumberInt": "node scripts/fixCaseNumberInt.js"
   },
   "dependencies": {
     "@google/genai": "^1.1.0",

@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { errorHandler } from "./middleware/errorHandler.js";
 import gameRoutes from "./routes/gameRoutes.js";
 import loginRoutes from "./routes/loginRoute.js";
@@ -14,6 +16,8 @@ import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 dotenv.config({ path: "./config/config.env" });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -25,6 +29,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: "50mb" }));
+app.use('/mp3files', express.static(path.join(__dirname, 'mp3files')));
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {})

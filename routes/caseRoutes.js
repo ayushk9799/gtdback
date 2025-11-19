@@ -2,8 +2,52 @@ import { Router } from "express";
 import Case from "../models/Case.js";
 import Category from "../models/Category.js";
 import mongoose from "mongoose";
+// import { buildPublicUrl, presignPutForKey } from "../s3.js";
 
 const router = Router();
+
+// Helpers
+const ALLOWED_PARTS = new Set(["basicspeech", "vitalsspeech", "historyspeech", "physicalspeech"]);
+const buildKeyFor = (caseId, part) => `mp3files/${caseId}_${part}.mp3`;
+const findByBusinessCaseId = async (caseId) => {
+  if (typeof caseId !== "string" || !caseId.trim()) return null;
+  return await Case.findOne({ "caseData.caseId": caseId });
+};
+
+// Extract minimal diagnosis info from a Case document
+const extractDiagnosisSummary = (caseDoc) => {
+  if (!caseDoc || !caseDoc.caseData) return null;
+  const { caseCategory, steps } = caseDoc.caseData;
+
+  let correctDiagnosis = null;
+
+  if (Array.isArray(steps)) {
+    for (const step of steps) {
+      const data = step?.data;
+
+      // Preferred: pull from Case Review -> coreClinicalInsight.correctDiagnosis
+      if (data?.coreClinicalInsight?.correctDiagnosis && !correctDiagnosis) {
+        correctDiagnosis = data.coreClinicalInsight.correctDiagnosis;
+      }
+
+      // Fallback: look through diagnosisOptions array for isCorrect === true
+      if (!correctDiagnosis && Array.isArray(data?.diagnosisOptions)) {
+        const correct = data.diagnosisOptions.find((d) => d?.isCorrect === true);
+        if (correct) {
+          correctDiagnosis = correct.diagnosisName;
+        }
+      }
+    }
+  }
+
+  if (!correctDiagnosis) return null;
+
+  return {
+    id: caseDoc._id,
+    caseCategory: caseCategory || null,
+    correctDiagnosis,
+  };
+};
 
 // POST /api/cases/bulk -> upload array of cases
 // Accepts either body as an array or { cases: [...] }
@@ -95,6 +139,165 @@ router.post("/bulk", async (req, res, next) => {
   }
 });
 
+// GET /api/cases/diagnoses -> list correct diagnoses for all cases
+// Optional query: ?caseId=NEU005 to filter by business caseId
+router.get("/diagnoses", async (req, res, next) => {
+  try {
+    const { caseId } = req.query || {};
+
+    let query = {};
+    if (typeof caseId === "string" && caseId.trim()) {
+      query = { "caseData.caseId": caseId.trim() };
+    }
+
+    const docs = await Case.find(query);
+    if (!docs || docs.length === 0) {
+      return res.json({ success: true, diagnoses: [] });
+    }
+
+    const diagnoses = [];
+    for (const doc of docs) {
+      const summary = extractDiagnosisSummary(doc);
+      if (summary) {
+        diagnoses.push(summary);
+      }
+    }
+
+    return res.json({ success: true, diagnoses });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/cases/merge -> partially update fields inside caseData by business caseId
+// Body: { caseId: string, updates: object }
+router.patch("/merge", async (req, res, next) => {
+  try {
+    const { caseId, updates } = req.body || {};
+    if (typeof caseId !== "string" || !caseId.trim()) {
+      return res.status(400).json({ error: "'caseId' (string) is required" });
+    }
+    if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
+      return res.status(400).json({ error: "'updates' (object) is required" });
+    }
+
+    // Prevent accidental overwrite of business identifier unless explicitly intended
+    if (Object.prototype.hasOwnProperty.call(updates, "caseId") && updates.caseId !== caseId) {
+      return res.status(400).json({ error: "Updating 'caseId' is not allowed in this endpoint" });
+    }
+
+    // Flatten nested object to dot paths for $set
+    const flattenObject = (obj, parent = "") => {
+      const entries = {};
+      for (const [key, value] of Object.entries(obj)) {
+        const path = parent ? `${parent}.${key}` : key;
+        if (
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          !(value instanceof Date)
+        ) {
+          Object.assign(entries, flattenObject(value, path));
+        } else {
+          entries[path] = value;
+        }
+      }
+      return entries;
+    };
+
+    const flat = flattenObject(updates);
+    const setDoc = {};
+    for (const [k, v] of Object.entries(flat)) {
+      setDoc[`caseData.${k}`] = v;
+    }
+
+    // Try to update existing by business id
+    const updated = await Case.findOneAndUpdate(
+      { "caseData.caseId": caseId },
+      { $set: setDoc },
+      { new: true }
+    );
+
+    if (updated) {
+      return res.json({ success: true, created: false, case: updated });
+    }
+
+    // If not found, create new with merged payload
+    const newDoc = await Case.create({
+      caseData: { caseId, ...updates },
+    });
+    return res.status(201).json({ success: true, created: true, case: newDoc });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/cases/:caseId/mp3/presign -> presign S3 PUT for one part
+router.post("/:caseId/mp3/presign", async (req, res, next) => {
+  try {
+    const { caseId } = req.params;
+    const { part } = req.body || {};
+    if (!ALLOWED_PARTS.has(part)) {
+      return res.status(400).json({ error: "'part' must be one of basicspeech, vitalsspeech, historyspeech, physicalspeech" });
+    }
+    const caseDoc = await findByBusinessCaseId(caseId);
+    if (!caseDoc) {
+      return res.status(404).json({ error: "Case not found by caseId" });
+    }
+    const key = buildKeyFor(caseId, part);
+    const uploadUrl = await presignPutForKey(key, "audio/mpeg", 900);
+    const url = buildPublicUrl(key);
+    return res.json({ success: true, uploadUrl, key, url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/cases/:caseId/mp3 -> save full URL for a part (computed server-side)
+router.patch("/:caseId/mp3", async (req, res, next) => {
+  try {
+    const { caseId } = req.params;
+    const { part } = req.body || {};
+    if (!ALLOWED_PARTS.has(part)) {
+      return res.status(400).json({ error: "'part' must be one of basicspeech, vitalsspeech, historyspeech, physicalspeech" });
+    }
+    const caseDoc = await findByBusinessCaseId(caseId);
+    if (!caseDoc) {
+      return res.status(404).json({ error: "Case not found by caseId" });
+    }
+    const key = buildKeyFor(caseId, part);
+    const url = buildPublicUrl(key);
+    if (!caseDoc.mp3) {
+      caseDoc.mp3 = {};
+    }
+    caseDoc.mp3[part] = url;
+    await caseDoc.save();
+    return res.json({ success: true, caseId, mp3: caseDoc.mp3 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/cases/:caseId/mp3 -> fetch stored URLs for a case
+router.get("/:caseId/mp3", async (req, res, next) => {
+  try {
+    const { caseId } = req.params;
+    const caseDoc = await findByBusinessCaseId(caseId);
+    if (!caseDoc) {
+      return res.status(404).json({ error: "Case not found by caseId" });
+    }
+    const mp3 = caseDoc.mp3 || {
+      basicspeech: null,
+      vitalsspeech: null,
+      historyspeech: null,
+      physicalspeech: null,
+    };
+    return res.json({ success: true, caseId, mp3 });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/cases/:id -> fetch a single case by ObjectId
 router.get("/:id", async (req, res, next) => {
   try {
@@ -103,6 +306,7 @@ router.get("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Valid case ObjectId required" });
     }
     const doc = await Case.findById(id);
+    console.log(doc);
     if (!doc) return res.status(404).json({ error: "Case not found" });
     return res.json({ success: true, case: doc });
   } catch (err) {
