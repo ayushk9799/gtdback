@@ -43,6 +43,17 @@ const UserSchema = new mongoose.Schema({
   fcmToken: {
     type: String,
   },
+  isPremium: {
+    type: Boolean,
+    default: false,
+  },
+  premiumExpiresAt: {
+    type: Date,
+  },
+  premiumPlan: {
+    type: String,
+  },
+
 }, { timestamps: true });
 
 // Static: Return brief gameplay list for a user with minimal case info
