@@ -46,7 +46,6 @@ export const getNextCasesPerDepartment = async (req, res, next) => {
 };
 
 export const getUser = async (req, res, next) => {
-  console.log(req.params);
   
   try {
     const { userID } = req.params;
@@ -60,7 +59,6 @@ export const getUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    console.log('working here');
     
     const { userID } = req.params;
     const { user } = req.body;

@@ -306,7 +306,6 @@ router.get("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Valid case ObjectId required" });
     }
     const doc = await Case.findById(id);
-    console.log(doc);
     if (!doc) return res.status(404).json({ error: "Case not found" });
     return res.json({ success: true, case: doc });
   } catch (err) {

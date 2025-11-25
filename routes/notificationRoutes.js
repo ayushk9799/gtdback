@@ -14,7 +14,6 @@ router.post('/send-notification', async (req, res) => {
 });
 
 router.post('/send-to-topic', async (req, res) => {
-    console.log("req.body", req.body);
   const { topic, title, body, data, imageUrl } = req.body;
   try {
     const resp = await sendToTopic(topic, title, body, data, imageUrl);
