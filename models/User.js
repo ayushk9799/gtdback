@@ -40,6 +40,16 @@ const UserSchema = new mongoose.Schema({
     },
     
   }],
+  completedDailyChallenges: [{
+    dailyChallenge: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DailyChallenge",
+    },
+    gameplay: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Gameplay",
+    },
+  }],
   fcmToken: {
     type: String,
   },
@@ -57,6 +67,7 @@ const UserSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Static: Return brief gameplay list for a user with minimal case info
+// Supports both Case and DailyChallenge gameplays
 UserSchema.statics.listGameplayBrief = async function(userId, status) {
   if (!userId) throw new Error("userId is required");
   const filter = { userId };
@@ -65,31 +76,65 @@ UserSchema.statics.listGameplayBrief = async function(userId, status) {
   const items = await Gameplay.find(filter)
     .sort({ createdAt: -1 })
     .populate({ path: "caseId", select: "caseData caseTitle caseCategory" })
+    .populate({ path: "dailyChallengeId", select: "caseData metadata date" })
     .lean();
 
   return items.map((gp) => {
-    const caseDoc = gp.caseId || {};
-    const caseData = caseDoc.caseData || {};
-    const title = caseDoc.caseTitle || caseData.caseTitle || "";
-    const category = caseDoc.caseCategory || caseData.caseCategory || "";
-    let correctDiagnosis = "";
-    try {
-      const diags = (caseData.steps?.[2]?.data?.diagnosisOptions) || [];
-      const correct = diags.find((d) => d && d.isCorrect);
-      correctDiagnosis = correct?.diagnosisName || "";
-    } catch (_) {}
+    const sourceType = gp.sourceType || "case";
+    
+    if (sourceType === "dailyChallenge") {
+      const challengeDoc = gp.dailyChallengeId || {};
+      const caseData = challengeDoc.caseData || {};
+      const metadata = challengeDoc.metadata || {};
+      const title = metadata.title || caseData.caseTitle || "";
+      const category = metadata.category || caseData.caseCategory || "";
+      let correctDiagnosis = "";
+      try {
+        const diags = (caseData.steps?.[2]?.data?.diagnosisOptions) || [];
+        const correct = diags.find((d) => d && d.isCorrect);
+        correctDiagnosis = correct?.diagnosisName || "";
+      } catch (_) {}
 
-    return {
-      gameplayId: gp._id,
-      status: gp.status,
-      createdAt: gp.createdAt,
-      case: {
-        id: caseDoc._id,
-        title,
-        category,
-        correctDiagnosis,
-      },
-    };
+      return {
+        gameplayId: gp._id,
+        sourceType: "dailyChallenge",
+        status: gp.status,
+        createdAt: gp.createdAt,
+        dailyChallenge: {
+          id: challengeDoc._id,
+          date: challengeDoc.date,
+          title,
+          category,
+          correctDiagnosis,
+          mainimage: caseData.mainimage || null,
+        },
+      };
+    } else {
+      const caseDoc = gp.caseId || {};
+      const caseData = caseDoc.caseData || {};
+      const title = caseDoc.caseTitle || caseData.caseTitle || "";
+      const category = caseDoc.caseCategory || caseData.caseCategory || "";
+      let correctDiagnosis = "";
+      try {
+        const diags = (caseData.steps?.[2]?.data?.diagnosisOptions) || [];
+        const correct = diags.find((d) => d && d.isCorrect);
+        correctDiagnosis = correct?.diagnosisName || "";
+      } catch (_) {}
+
+      return {
+        gameplayId: gp._id,
+        sourceType: "case",
+        status: gp.status,
+        createdAt: gp.createdAt,
+        case: {
+          id: caseDoc._id,
+          title,
+          category,
+          correctDiagnosis,
+          mainimage: caseData.mainimage || null,
+        },
+      };
+    }
   });
 };
 

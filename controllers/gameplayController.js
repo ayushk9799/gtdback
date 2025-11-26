@@ -1,5 +1,6 @@
 import Gameplay from "../models/Gameplay.js";
 import Case from "../models/Case.js";
+import DailyChallenge from "../models/DailyChallenge.js";
 import User from "../models/User.js";
 import TopUser from "../models/TopUser.js";
 
@@ -53,26 +54,56 @@ async function updateLeaderboardForUser(userId) {
 // POST /api/gameplays -> start or get existing gameplay
 export const startOrGetGameplay = async (req, res, next) => {
   try {
-    const { userId, caseId } = req.body || {};
+    const { userId, caseId, dailyChallengeId, sourceType } = req.body || {};
 
-    if (!userId || !caseId) {
-      return res.status(400).json({ error: "userId and caseId are required" });
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
     }
 
-    const [userExists, caseExists] = await Promise.all([
-      User.exists({ _id: userId }),
-      Case.exists({ _id: caseId }),
-    ]);
+    // Determine source type and validate
+    const effectiveSourceType = sourceType || (dailyChallengeId ? "dailyChallenge" : "case");
+    
+    if (effectiveSourceType === "case") {
+      if (!caseId) {
+        return res.status(400).json({ error: "caseId is required for case gameplay" });
+      }
+      
+      const [userExists, caseExists] = await Promise.all([
+        User.exists({ _id: userId }),
+        Case.exists({ _id: caseId }),
+      ]);
 
-    if (!userExists) return res.status(404).json({ error: "User not found" });
-    if (!caseExists) return res.status(404).json({ error: "Case not found" });
+      if (!userExists) return res.status(404).json({ error: "User not found" });
+      if (!caseExists) return res.status(404).json({ error: "Case not found" });
 
-    let gameplay = await Gameplay.findOne({ userId, caseId });
-    if (!gameplay) {
-      gameplay = await Gameplay.create({ userId, caseId });
+      let gameplay = await Gameplay.findOne({ userId, caseId, sourceType: "case" });
+      if (!gameplay) {
+        gameplay = await Gameplay.create({ userId, caseId, sourceType: "case" });
+      }
+
+      return res.status(201).json({ success: true, gameplay });
+    } else if (effectiveSourceType === "dailyChallenge") {
+      if (!dailyChallengeId) {
+        return res.status(400).json({ error: "dailyChallengeId is required for daily challenge gameplay" });
+      }
+      
+      const [userExists, challengeExists] = await Promise.all([
+        User.exists({ _id: userId }),
+        DailyChallenge.exists({ _id: dailyChallengeId }),
+      ]);
+
+      if (!userExists) return res.status(404).json({ error: "User not found" });
+      if (!challengeExists) return res.status(404).json({ error: "Daily challenge not found" });
+
+      let gameplay = await Gameplay.findOne({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
+      if (!gameplay) {
+        gameplay = await Gameplay.create({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
+      }
+
+      return res.status(201).json({ success: true, gameplay });
+    } else {
+      return res.status(400).json({ error: "Invalid sourceType. Must be 'case' or 'dailyChallenge'" });
     }
-
-    return res.status(201).json({ success: true, gameplay });
   } catch (err) {
     next(err);
   }
@@ -82,7 +113,10 @@ export const startOrGetGameplay = async (req, res, next) => {
 export const getGameplay = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const gameplay = await Gameplay.findById(id).populate("userId", "name email").populate("caseId");
+    const gameplay = await Gameplay.findById(id)
+      .populate("userId", "name email")
+      .populate("caseId")
+      .populate("dailyChallengeId");
     if (!gameplay) return res.status(404).json({ error: "Gameplay not found" });
     res.json({ success: true, gameplay });
   } catch (err) {
@@ -90,13 +124,15 @@ export const getGameplay = async (req, res, next) => {
   }
 };
 
-// GET /api/gameplays?userId=&caseId=
+// GET /api/gameplays?userId=&caseId=&dailyChallengeId=&sourceType=
 export const listGameplays = async (req, res, next) => {
   try {
-    const { userId, caseId } = req.query;
+    const { userId, caseId, dailyChallengeId, sourceType } = req.query;
     const filter = {};
     if (userId) filter.userId = userId;
     if (caseId) filter.caseId = caseId;
+    if (dailyChallengeId) filter.dailyChallengeId = dailyChallengeId;
+    if (sourceType) filter.sourceType = sourceType;
     const items = await Gameplay.find(filter).sort({ createdAt: -1 });
     res.json({ success: true, gameplays: items });
   } catch (err) {
@@ -225,17 +261,33 @@ export const completeGameplay = async (req, res, next) => {
       await updateLeaderboardForUser(gameplay.userId);
     } catch (_) {}
 
-    // Upsert into User.completedCases for quick lookup
-    try {
-      await User.updateOne(
-        { _id: gameplay.userId },
-        {
-          $addToSet: {
-            completedCases: { case: gameplay.caseId, gameplay: gameplay._id },
-          },
-        }
-      );
-    } catch (_) {}
+    // Upsert into User.completedCases for quick lookup (only for case type)
+    if (gameplay.sourceType === "case" && gameplay.caseId) {
+      try {
+        await User.updateOne(
+          { _id: gameplay.userId },
+          {
+            $addToSet: {
+              completedCases: { case: gameplay.caseId, gameplay: gameplay._id },
+            },
+          }
+        );
+      } catch (_) {}
+    }
+
+    // Upsert into User.completedDailyChallenges for daily challenge type
+    if (gameplay.sourceType === "dailyChallenge" && gameplay.dailyChallengeId) {
+      try {
+        await User.updateOne(
+          { _id: gameplay.userId },
+          {
+            $addToSet: {
+              completedDailyChallenges: { dailyChallenge: gameplay.dailyChallengeId, gameplay: gameplay._id },
+            },
+          }
+        );
+      } catch (_) {}
+    }
 
     res.json({ success: true, gameplay });
   } catch (err) {
@@ -264,40 +316,80 @@ export const resetGameplay = async (req, res, next) => {
   }
 };
 
-// POST /api/gameplays/:id/submit
+// POST /api/gameplays/submit (without :id) or POST /api/gameplays/:id/submit
 // Bulk submission of selections and optional completion in a single call
+// Supports both Case and DailyChallenge gameplays
 export const submitSelections = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { userId, caseId, diagnosisIndex, testIndices, treatmentIndices, penaltiesDelta, complete, points } = req.body || {};
+    const { 
+      userId, 
+      caseId, 
+      dailyChallengeId, 
+      sourceType,
+      diagnosisIndex, 
+      testIndices, 
+      treatmentIndices, 
+      penaltiesDelta, 
+      complete, 
+      points 
+    } = req.body || {};
 
     let gameplay = null;
 
     // If an id is provided, attempt to load it
     if (id) {
       gameplay = await Gameplay.findById(id);
-      if (!gameplay && (!userId || !caseId)) {
-        return res.status(404).json({ error: "Gameplay not found. Provide userId and caseId to create one." });
+      if (!gameplay && !userId) {
+        return res.status(404).json({ error: "Gameplay not found. Provide userId and (caseId or dailyChallengeId) to create one." });
       }
     }
 
-    // If no gameplay loaded, ensure userId and caseId are present and upsert
+    // If no gameplay loaded, determine source type and find/create
     if (!gameplay) {
-      if (!userId || !caseId) {
-        return res.status(400).json({ error: "userId and caseId are required when gameplay id is not found or not provided" });
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required when gameplay id is not found or not provided" });
       }
 
-      // Validate references exist
-      const [userExists, caseExists] = await Promise.all([
-        User.exists({ _id: userId }),
-        Case.exists({ _id: caseId }),
-      ]);
-      if (!userExists) return res.status(404).json({ error: "User not found" });
-      if (!caseExists) return res.status(404).json({ error: "Case not found" });
+      // Determine source type
+      const effectiveSourceType = sourceType || (dailyChallengeId ? "dailyChallenge" : "case");
+      
+      if (effectiveSourceType === "case") {
+        if (!caseId) {
+          return res.status(400).json({ error: "caseId is required for case gameplay" });
+        }
 
-      gameplay = await Gameplay.findOne({ userId, caseId });
-      if (!gameplay) {
-        gameplay = await Gameplay.create({ userId, caseId });
+        // Validate references exist
+        const [userExists, caseExists] = await Promise.all([
+          User.exists({ _id: userId }),
+          Case.exists({ _id: caseId }),
+        ]);
+        if (!userExists) return res.status(404).json({ error: "User not found" });
+        if (!caseExists) return res.status(404).json({ error: "Case not found" });
+
+        gameplay = await Gameplay.findOne({ userId, caseId, sourceType: "case" });
+        if (!gameplay) {
+          gameplay = await Gameplay.create({ userId, caseId, sourceType: "case" });
+        }
+      } else if (effectiveSourceType === "dailyChallenge") {
+        if (!dailyChallengeId) {
+          return res.status(400).json({ error: "dailyChallengeId is required for daily challenge gameplay" });
+        }
+
+        // Validate references exist
+        const [userExists, challengeExists] = await Promise.all([
+          User.exists({ _id: userId }),
+          DailyChallenge.exists({ _id: dailyChallengeId }),
+        ]);
+        if (!userExists) return res.status(404).json({ error: "User not found" });
+        if (!challengeExists) return res.status(404).json({ error: "Daily challenge not found" });
+
+        gameplay = await Gameplay.findOne({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
+        if (!gameplay) {
+          gameplay = await Gameplay.create({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
+        }
+      } else {
+        return res.status(400).json({ error: "Invalid sourceType. Must be 'case' or 'dailyChallenge'" });
       }
     }
 
@@ -366,13 +458,23 @@ export const submitSelections = async (req, res, next) => {
       } catch (_) {}
     }
 
+    // Track completed cases or daily challenges
     if (complete) {
-      try {
-        await User.updateOne(
-          { _id: gameplay.userId },
-          { $addToSet: { completedCases: { case: gameplay.caseId, gameplay: gameplay._id } } }
-        );
-      } catch (_) {}
+      if (gameplay.sourceType === "case" && gameplay.caseId) {
+        try {
+          await User.updateOne(
+            { _id: gameplay.userId },
+            { $addToSet: { completedCases: { case: gameplay.caseId, gameplay: gameplay._id } } }
+          );
+        } catch (_) {}
+      } else if (gameplay.sourceType === "dailyChallenge" && gameplay.dailyChallengeId) {
+        try {
+          await User.updateOne(
+            { _id: gameplay.userId },
+            { $addToSet: { completedDailyChallenges: { dailyChallenge: gameplay.dailyChallengeId, gameplay: gameplay._id } } }
+          );
+        } catch (_) {}
+      }
     }
 
     res.json({ success: true, gameplay });
@@ -380,5 +482,3 @@ export const submitSelections = async (req, res, next) => {
     next(err);
   }
 };
-
-
