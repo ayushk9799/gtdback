@@ -90,13 +90,12 @@ function getAppleSigningKey(header, callback) {
 router.post("/apple/loginSignUp", async (req, res) => {
   try {
     const { idToken: idToken, authorizationCode, displayName, email: providedEmail } = req.body;
-
     if (!idToken) {
       return res.status(400).json({ error: "Identity token is required" });
     }
 
     // Verify the Apple identity token
-    const decodedToken = await new Promise((resolve, reject) => {
+    const decodedToken = await new Promise((resolve, reject) => { 
       jwt.verify(
         idToken,
         getAppleSigningKey,
@@ -128,15 +127,15 @@ router.post("/apple/loginSignUp", async (req, res) => {
     }
 
     // Build name from provided displayName object
-    let name = "Apple User";
-    if (displayName) {
-      const nameParts = [];
-      if (displayName.givenName) nameParts.push(displayName.givenName);
-      if (displayName.familyName) nameParts.push(displayName.familyName);
-      if (nameParts.length > 0) {
-        name = nameParts.join(" ");
-      }
-    }
+    // let name = "Apple User";
+    // if (displayName) {
+    //   const nameParts = [];
+    //   if (displayName.givenName) nameParts.push(displayName.givenName);
+    //   if (displayName.familyName) nameParts.push(displayName.familyName);
+    //   if (nameParts.length > 0) {
+    //     name = nameParts.join(" ");
+    //   }
+    // }
 
     // Check if user exists by email
     let user = await User.findOne({ email });
@@ -145,7 +144,7 @@ router.post("/apple/loginSignUp", async (req, res) => {
       // Create new user if doesn't exist
       user = await User.create({
         email,
-        name,
+        name : displayName
       });
     }
 
