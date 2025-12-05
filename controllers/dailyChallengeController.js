@@ -4,13 +4,29 @@ import DailyChallenge from "../models/DailyChallenge.js";
 export const getTodaysChallenge = async (req, res, next) => {
   try {
     // Get user timezone from query parameter or header, default to UTC
-    const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
-    const challenge = await DailyChallenge.getTodaysChallenge(userTimezone);
+    // const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
+    // console.log(userTimezone);
+    // const challenge = await DailyChallenge.getTodaysChallenge(userTimezone);
     
-    // Get user's current date for response
-    const now = new Date();
-    const userDate = new Date(now.toLocaleString("en-US", { timeZone: userTimezone }));
-    const userToday = userDate.toISOString().split('T')[0];
+    // // Get user's current date for response
+    // const now = new Date();
+    // const userDate = new Date(now.toLocaleString("en-US", { timeZone: userTimezone }));
+    // const userToday = userDate.toISOString().split('T')[0];
+    // console.log(userToday);
+    // console.log(challenge);
+    // console.log(userDate)
+    const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
+
+const formatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: userTimezone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const userToday = formatter.format(new Date());  // "2025-12-06"
+const challenge = await DailyChallenge.getTodaysChallenge(userTimezone);
+
     
     if (!challenge) {
       return res.status(404).json({
@@ -56,7 +72,6 @@ export const getChallengeByDate = async (req, res, next) => {
     }
     
     const challenge = await DailyChallenge.getChallengeByDate(date, userTimezone);
-    
     if (!challenge) {
       return res.status(404).json({
         success: false,

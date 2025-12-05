@@ -63,10 +63,15 @@ DailyChallengeSchema.pre('save', function(next) {
 // Static method to get today's challenge based on user's timezone
 DailyChallengeSchema.statics.getTodaysChallenge = function(userTimezone = 'UTC') {
   // Get current date in user's timezone
-  const now = new Date();
-  const userDate = new Date(now.toLocaleString("en-US", { timeZone: userTimezone }));
-  const today = userDate.toISOString().split('T')[0]; // YYYY-MM-DD format
-  return this.findOne({ date: today });
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: userTimezone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const userToday = formatter.format(new Date());
+  return this.findOne({ date: userToday });
 };
 
 // Static method to get challenge by date with timezone validation

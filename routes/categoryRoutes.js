@@ -112,8 +112,38 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-export default router;
+// GET /api/categories/:categoryId/cases -> get all cases for a category
+router.get("/:categoryId/cases", async (req, res, next) => {
+  try {
+    const { categoryId } = req.params;
+    
+    if (!categoryId) {
+      return res.status(400).json({ error: "categoryId is required" });
+    }
 
+    const category = await Category.findById(categoryId).populate("caseList");
+    if (!category) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    const cases = (category.caseList || []).map((caseDoc) => {
+      const caseData = caseDoc?.caseData || {};
+      const firstStep = Array.isArray(caseData.steps) ? caseData.steps[0] : null;
+      const chiefComplaint = firstStep?.data?.chiefComplaint || caseData.caseTitle || "";
+      
+      return {
+        caseId: caseDoc._id,
+        caseTitle: caseData.caseTitle || "",
+        chiefComplaint: chiefComplaint,
+        caseIdBusiness: caseData.caseId || "",
+      };
+    });
+
+    return res.json({ success: true, cases });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // POST /api/categories/:categoryId/cases -> add an existing case to a category
 router.post("/:categoryId/cases", async (req, res, next) => {
@@ -136,4 +166,6 @@ router.post("/:categoryId/cases", async (req, res, next) => {
     next(err);
   }
 });
+
+export default router;
 

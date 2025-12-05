@@ -12,6 +12,10 @@ const CaseSchema = new mongoose.Schema({
     historyspeech: { type: String, default: null },
     physicalspeech: { type: String, default: null },
   },
+  voiceId: {
+    type: String,
+    default: null,
+  },
 });
 
 const Case = mongoose.model("Case", CaseSchema);

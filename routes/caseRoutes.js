@@ -168,6 +168,17 @@ router.get("/diagnoses", async (req, res, next) => {
     next(err);
   }
 });
+router.get("/casewise/:caseId", async (req, res, next) => {
+  try {
+    const { caseId } = req.params;
+    const doc = await Case.findOne({ "caseData.caseId": caseId });
+    if (!doc) return res.status(404).json({ error: "Case not found" });
+    return res.json({ success: true, caseItem: doc });
+  }
+  catch (err) {
+    next(err);
+  }
+});
 
 // PATCH /api/cases/merge -> partially update fields inside caseData by business caseId
 // Body: { caseId: string, updates: object }
@@ -298,6 +309,8 @@ router.get("/:caseId/mp3", async (req, res, next) => {
   }
 });
 
+
+
 // GET /api/cases/:id -> fetch a single case by ObjectId
 router.get("/:id", async (req, res, next) => {
   try {
@@ -312,6 +325,7 @@ router.get("/:id", async (req, res, next) => {
     next(err);
   }
 });
+//GET using the CaseId
 
 export default router;
 

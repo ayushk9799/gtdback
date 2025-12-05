@@ -83,6 +83,7 @@ export const getDepartmentProgress = async (req, res, next) => {
               as: "c",
               in: {
                 caseId: "$$c._id",
+                caseTitle: { $ifNull: ["$$c.caseData.caseTitle", ""] },
                 chiefComplaint: {
                   $ifNull: [
                     {
@@ -99,6 +100,7 @@ export const getDepartmentProgress = async (req, res, next) => {
                     { $ifNull: ["$$c.caseData.caseTitle", ""] },
                   ],
                 },
+                mainimage: { $ifNull: ["$$c.caseData.mainimage", null] },
               },
             },
           },
