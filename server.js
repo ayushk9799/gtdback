@@ -15,6 +15,8 @@ import progressRoutes from "./routes/progressRoutes.js";
 import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import { startScheduler, stopScheduler } from "./jobs/notificationScheduler.js";
+
 dotenv.config({ path: "./config/config.env" });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,10 +32,22 @@ app.use(
 );
 app.use(express.json({ limit: "50mb" }));
 app.use('/mp3files', express.static(path.join(__dirname, 'mp3files')));
+
+// Connect to MongoDB and start scheduler
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => {})
-  .catch((err) => {});
+  .then(async () => {
+    console.log('MongoDB connected');
+    // Start Agenda scheduler after MongoDB is ready
+    try {
+      await startScheduler(process.env.MONGODB_URI);
+    } catch (err) {
+      console.error('Failed to start notification scheduler:', err);
+    }
+  })
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+  });
 
 
 // Routes
@@ -54,4 +68,27 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3004;
 
-app.listen(PORT, () => {});
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// Graceful shutdown
+const gracefulShutdown = async (signal) => {
+  console.log(`${signal} received. Shutting down gracefully...`);
+  try {
+    await stopScheduler();
+  } catch (err) {
+    console.error('Error stopping scheduler:', err);
+  }
+  server.close(() => {
+    console.log('HTTP server closed');
+    mongoose.connection.close(false, () => {
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    });
+  });
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+

@@ -14,7 +14,7 @@ async function updateLeaderboardForUser(userId) {
   // Fetch user score
   const user = await User.findById(userId).select("cumulativePoints.total inTop10").lean();
   if (!user) return;
-  
+
   const newScore = user.cumulativePoints?.total || 0;
 
   // Update user's score in TopUser
@@ -62,12 +62,12 @@ export const startOrGetGameplay = async (req, res, next) => {
 
     // Determine source type and validate
     const effectiveSourceType = sourceType || (dailyChallengeId ? "dailyChallenge" : "case");
-    
+
     if (effectiveSourceType === "case") {
       if (!caseId) {
         return res.status(400).json({ error: "caseId is required for case gameplay" });
       }
-      
+
       const [userExists, caseExists] = await Promise.all([
         User.exists({ _id: userId }),
         Case.exists({ _id: caseId }),
@@ -86,7 +86,7 @@ export const startOrGetGameplay = async (req, res, next) => {
       if (!dailyChallengeId) {
         return res.status(400).json({ error: "dailyChallengeId is required for daily challenge gameplay" });
       }
-      
+
       const [userExists, challengeExists] = await Promise.all([
         User.exists({ _id: userId }),
         DailyChallenge.exists({ _id: dailyChallengeId }),
@@ -259,7 +259,7 @@ export const completeGameplay = async (req, res, next) => {
       const inc = { "cumulativePoints.total": newTotal - baselineTotal };
       await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
       await updateLeaderboardForUser(gameplay.userId);
-    } catch (_) {}
+    } catch (_) { }
 
     // Upsert into User.completedCases for quick lookup (only for case type)
     if (gameplay.sourceType === "case" && gameplay.caseId) {
@@ -272,7 +272,7 @@ export const completeGameplay = async (req, res, next) => {
             },
           }
         );
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Upsert into User.completedDailyChallenges for daily challenge type
@@ -286,7 +286,7 @@ export const completeGameplay = async (req, res, next) => {
             },
           }
         );
-      } catch (_) {}
+      } catch (_) { }
     }
 
     res.json({ success: true, gameplay });
@@ -322,17 +322,17 @@ export const resetGameplay = async (req, res, next) => {
 export const submitSelections = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { 
-      userId, 
-      caseId, 
-      dailyChallengeId, 
+    const {
+      userId,
+      caseId,
+      dailyChallengeId,
       sourceType,
-      diagnosisIndex, 
-      testIndices, 
-      treatmentIndices, 
-      penaltiesDelta, 
-      complete, 
-      points 
+      diagnosisIndex,
+      testIndices,
+      treatmentIndices,
+      penaltiesDelta,
+      complete,
+      points
     } = req.body || {};
 
     let gameplay = null;
@@ -353,7 +353,7 @@ export const submitSelections = async (req, res, next) => {
 
       // Determine source type
       const effectiveSourceType = sourceType || (dailyChallengeId ? "dailyChallenge" : "case");
-      
+
       if (effectiveSourceType === "case") {
         if (!caseId) {
           return res.status(400).json({ error: "caseId is required for case gameplay" });
@@ -455,7 +455,7 @@ export const submitSelections = async (req, res, next) => {
         const inc = { "cumulativePoints.total": newTotal - baselineTotal };
         await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
         await updateLeaderboardForUser(gameplay.userId);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Track completed cases or daily challenges
@@ -466,18 +466,35 @@ export const submitSelections = async (req, res, next) => {
             { _id: gameplay.userId },
             { $addToSet: { completedCases: { case: gameplay.caseId, gameplay: gameplay._id } } }
           );
-        } catch (_) {}
+        } catch (_) { }
       } else if (gameplay.sourceType === "dailyChallenge" && gameplay.dailyChallengeId) {
         try {
           await User.updateOne(
             { _id: gameplay.userId },
             { $addToSet: { completedDailyChallenges: { dailyChallenge: gameplay.dailyChallengeId, gameplay: gameplay._id } } }
           );
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
-    res.json({ success: true, gameplay });
+    // Fetch updated user data to return to frontend
+    let updatedUser = null;
+    if (complete) {
+      try {
+        const userDoc = await User.findById(gameplay.userId)
+          .select("cumulativePoints completedCases completedDailyChallenges")
+          .lean();
+        if (userDoc) {
+          updatedUser = {
+            cumulativePoints: userDoc.cumulativePoints || { total: 0 },
+            completedCasesCount: (userDoc.completedCases || []).length,
+            completedDailyChallengesCount: (userDoc.completedDailyChallenges || []).length,
+          };
+        }
+      } catch (_) { }
+    }
+
+    res.json({ success: true, gameplay, updatedUser });
   } catch (err) {
     next(err);
   }
