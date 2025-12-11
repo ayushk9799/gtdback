@@ -37,7 +37,6 @@ app.use('/mp3files', express.static(path.join(__dirname, 'mp3files')));
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(async () => {
-    console.log('MongoDB connected');
     // Start Agenda scheduler after MongoDB is ready
     try {
       await startScheduler(process.env.MONGODB_URI);
@@ -69,21 +68,17 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 3004;
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
-  console.log(`${signal} received. Shutting down gracefully...`);
   try {
     await stopScheduler();
   } catch (err) {
     console.error('Error stopping scheduler:', err);
   }
   server.close(() => {
-    console.log('HTTP server closed');
     mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed');
       process.exit(0);
     });
   });

@@ -22,7 +22,7 @@ const UserSchema = new mongoose.Schema({
   },
   cumulativePoints: {
     total: { type: Number, default: 0 },
-   
+
   },
   inTop10: {
     type: Boolean,
@@ -38,7 +38,7 @@ const UserSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: "Gameplay",
     },
-    
+
   }],
   completedDailyChallenges: [{
     dailyChallenge: {
@@ -63,6 +63,10 @@ const UserSchema = new mongoose.Schema({
   premiumPlan: {
     type: String,
   },
+  platform: {
+    type: String,
+    enum: ["android", "ios"],
+  },
 
 }, { timestamps: true });
 
@@ -81,7 +85,7 @@ UserSchema.statics.listGameplayBrief = async function(userId, status) {
 
   return items.map((gp) => {
     const sourceType = gp.sourceType || "case";
-    
+
     if (sourceType === "dailyChallenge") {
       const challengeDoc = gp.dailyChallengeId || {};
       const caseData = challengeDoc.caseData || {};
