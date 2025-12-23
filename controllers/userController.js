@@ -47,7 +47,7 @@ export const getNextCasesPerDepartment = async (req, res, next) => {
 };
 
 export const getUser = async (req, res, next) => {
-  
+
   try {
     const { userID } = req.params;
     const user = await User.findById(userID);
@@ -60,7 +60,7 @@ export const getUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    
+
     const { userID } = req.params;
     const { user } = req.body;
     const updatedUser = await User.findByIdAndUpdate(userID, user, { new: true });
@@ -84,7 +84,7 @@ export const deleteUser = async (req, res, next) => {
     }
 
     // Verify email matches - ensures only the user can delete their account
-  
+
 
     // Delete all gameplays associated with the user
     await Gameplay.deleteMany({ userId: userID });
@@ -95,9 +95,9 @@ export const deleteUser = async (req, res, next) => {
     // Delete the user
     await User.findByIdAndDelete(userID);
 
-    res.status(200).json({ 
-      success: true, 
-      message: "Account and all associated data deleted successfully" 
+    res.status(200).json({
+      success: true,
+      message: "Account and all associated data deleted successfully"
     });
   } catch (err) {
     next(err);

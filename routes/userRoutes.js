@@ -9,5 +9,3 @@ router.delete("/:userID", deleteUser)
 router.get("/:userId/next-cases", getNextCasesPerDepartment);
 
 export default router;
-
-
