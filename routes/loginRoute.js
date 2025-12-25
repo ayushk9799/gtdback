@@ -17,7 +17,7 @@ const appleJwksClient = jwksClient({
 // Google authentication route
 router.post("/google/loginSignUp", async (req, res) => {
   try {
-    const { token , platform} = req.body;
+    const { token, platform } = req.body;
 
     if (!token) {
       return res.status(400).json({ error: "Token is required" });
@@ -44,9 +44,11 @@ router.post("/google/loginSignUp", async (req, res) => {
 
     // Check if user exists
     let user = await User.findOne({ email: payload.email });
+    let isNewUser = false;
 
     if (!user) {
       // Create new user if doesn't exist
+      isNewUser = true;
       user = await User.create({
         email: payload.email,
         name: payload.name,
@@ -56,6 +58,7 @@ router.post("/google/loginSignUp", async (req, res) => {
 
     res.json({
       success: true,
+      isNewUser,
       user: {
         id: user._id,
         email: user.email,
@@ -136,9 +139,11 @@ router.post("/apple/loginSignUp", async (req, res) => {
 
     // Check if user exists by email
     let user = await User.findOne({ email });
+    let isNewUser = false;
 
     if (!user) {
       // Create new user if doesn't exist
+      isNewUser = true;
       user = await User.create({
         email,
         name: displayName,
@@ -148,6 +153,7 @@ router.post("/apple/loginSignUp", async (req, res) => {
 
     res.json({
       success: true,
+      isNewUser,
       user: {
         id: user._id,
         email: user.email,

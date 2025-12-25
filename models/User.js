@@ -30,11 +30,11 @@ const UserSchema = new mongoose.Schema({
     index: true,
   },
   completedCases: [{
-    case:{
+    case: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Case",
     },
-    gameplay:{
+    gameplay: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Gameplay",
     },
@@ -67,12 +67,48 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ["android", "ios"],
   },
+  // Heart management fields
+  hearts: {
+    type: Number,
+    default: 2,
+  },
+  heartsUpdatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  timezone: {
+    type: String,
+    default: null,  // e.g., "America/New_York", "Asia/Kolkata"
+  },
+  // Referral system
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true,  // Allows null but enforces uniqueness when present
+  },
 
 }, { timestamps: true });
 
+// Pre-save hook to generate unique referral code for new users
+UserSchema.pre('save', async function (next) {
+  if (this.isNew && !this.referralCode) {
+    const prefix = (this.name || 'USER').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'X');
+    let code;
+    let exists = true;
+    // Keep generating until we find a unique code
+    while (exists) {
+      const suffix = Math.floor(1000 + Math.random() * 9000);
+      code = `${prefix}${suffix}`;
+      exists = await this.constructor.findOne({ referralCode: code });
+    }
+    this.referralCode = code;
+  }
+  next();
+});
+
 // Static: Return brief gameplay list for a user with minimal case info
 // Supports both Case and DailyChallenge gameplays
-UserSchema.statics.listGameplayBrief = async function(userId, status) {
+UserSchema.statics.listGameplayBrief = async function (userId, status) {
   if (!userId) throw new Error("userId is required");
   const filter = { userId };
   if (status) filter.status = status;
@@ -97,7 +133,7 @@ UserSchema.statics.listGameplayBrief = async function(userId, status) {
         const diags = (caseData.steps?.[2]?.data?.diagnosisOptions) || [];
         const correct = diags.find((d) => d && d.isCorrect);
         correctDiagnosis = correct?.diagnosisName || "";
-      } catch (_) {}
+      } catch (_) { }
 
       return {
         gameplayId: gp._id,
@@ -123,7 +159,7 @@ UserSchema.statics.listGameplayBrief = async function(userId, status) {
         const diags = (caseData.steps?.[2]?.data?.diagnosisOptions) || [];
         const correct = diags.find((d) => d && d.isCorrect);
         correctDiagnosis = correct?.diagnosisName || "";
-      } catch (_) {}
+      } catch (_) { }
 
       return {
         gameplayId: gp._id,

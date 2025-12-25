@@ -96,7 +96,6 @@ async function sendBatch(messages) {
                 { $unset: { fcmToken: 1 } }
             );
             cleaned = result.modifiedCount || 0;
-            console.log(`Removed ${cleaned} invalid FCM tokens`);
         }
 
         return {
@@ -115,7 +114,6 @@ async function sendBatch(messages) {
  * Uses MongoDB cursor for memory-safe streaming
  */
 export async function sendPersonalizedNotifications() {
-    console.log('Starting personalized notifications job...');
     const startTime = Date.now();
 
     // Create cursor - streams users one by one, never loads all into memory
@@ -150,7 +148,6 @@ export async function sendPersonalizedNotifications() {
             stats.totalSent += result.sent;
             stats.totalFailed += result.failed;
             stats.totalCleaned += result.cleaned;
-            console.log(`Sent batch of ${batch.length} messages`);
             batch = [];
 
             // Small delay to avoid rate limiting
@@ -164,11 +161,9 @@ export async function sendPersonalizedNotifications() {
         stats.totalSent += result.sent;
         stats.totalFailed += result.failed;
         stats.totalCleaned += result.cleaned;
-        console.log(`Sent final batch of ${batch.length} messages`);
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`Job completed in ${duration}s:`, stats);
 
     return stats;
 }
