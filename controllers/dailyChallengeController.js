@@ -5,16 +5,14 @@ export const getTodaysChallenge = async (req, res, next) => {
   try {
     // Get user timezone from query parameter or header, default to UTC
     // const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
-    // console.log(userTimezone);
+
     // const challenge = await DailyChallenge.getTodaysChallenge(userTimezone);
     
     // // Get user's current date for response
     // const now = new Date();
     // const userDate = new Date(now.toLocaleString("en-US", { timeZone: userTimezone }));
     // const userToday = userDate.toISOString().split('T')[0];
-    // console.log(userToday);
-    // console.log(challenge);
-    // console.log(userDate)
+
     const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
 
 const formatter = new Intl.DateTimeFormat("en-CA", {

@@ -17,48 +17,48 @@ const appleJwksClient = jwksClient({
 // Google authentication route
 router.post("/google/loginSignUp", async (req, res) => {
   try {
-    const { token , platform} = req.body;
-    // console.log("token", token);
-    // console.log("platform", platform);
+    const { token, platform } = req.body;
 
     if (!token) {
       return res.status(400).json({ error: "Token is required" });
     }
     let client;
     if (platform === "android") {
-       client = new OAuth2Client(
+      client = new OAuth2Client(
         "125181194595-uautevfk4s33h57gi28hougs7lruet70.apps.googleusercontent.com"
       );
     } else {
-       client = new OAuth2Client(
+      client = new OAuth2Client(
         "125181194595-joc9v9367fldq9qigu2bh9uoosq4u67d.apps.googleusercontent.com"
       );
     }
-    
+
     // Verify the token
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience:
         platform === "android" ? "125181194595-uautevfk4s33h57gi28hougs7lruet70.apps.googleusercontent.com" : "125181194595-joc9v9367fldq9qigu2bh9uoosq4u67d.apps.googleusercontent.com",
     });
-    // console.log("ticket", ticket);
 
     const payload = ticket.getPayload();
-    // console.log("payload", payload);
 
     // Check if user exists
     let user = await User.findOne({ email: payload.email });
+    let isNewUser = false;
 
     if (!user) {
       // Create new user if doesn't exist
+      isNewUser = true;
       user = await User.create({
         email: payload.email,
         name: payload.name,
+        platform: platform,
       });
     }
 
     res.json({
       success: true,
+      isNewUser,
       user: {
         id: user._id,
         email: user.email,
@@ -89,13 +89,13 @@ function getAppleSigningKey(header, callback) {
 // Apple authentication route
 router.post("/apple/loginSignUp", async (req, res) => {
   try {
-    const { idToken: idToken, authorizationCode, displayName, email: providedEmail } = req.body;
+    const { idToken: idToken, authorizationCode, displayName, email: providedEmail, platform } = req.body;
     if (!idToken) {
       return res.status(400).json({ error: "Identity token is required" });
     }
 
     // Verify the Apple identity token
-    const decodedToken = await new Promise((resolve, reject) => { 
+    const decodedToken = await new Promise((resolve, reject) => {
       jwt.verify(
         idToken,
         getAppleSigningKey,
@@ -121,8 +121,8 @@ router.post("/apple/loginSignUp", async (req, res) => {
     const appleUserId = decodedToken.sub; // Apple's unique user identifier
 
     if (!email) {
-      return res.status(400).json({ 
-        error: "Email is required. Please try signing in again." 
+      return res.status(400).json({
+        error: "Email is required. Please try signing in again."
       });
     }
 
@@ -139,17 +139,21 @@ router.post("/apple/loginSignUp", async (req, res) => {
 
     // Check if user exists by email
     let user = await User.findOne({ email });
+    let isNewUser = false;
 
     if (!user) {
       // Create new user if doesn't exist
+      isNewUser = true;
       user = await User.create({
         email,
-        name : displayName
+        name: displayName,
+        platform: platform || 'ios',
       });
     }
 
     res.json({
       success: true,
+      isNewUser,
       user: {
         id: user._id,
         email: user.email,

@@ -15,6 +15,7 @@ import progressRoutes from "./routes/progressRoutes.js";
 import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import referralRoutes from "./routes/referralRoutes.js";
 import { startScheduler, stopScheduler } from "./jobs/notificationScheduler.js";
 
 dotenv.config({ path: "./config/config.env" });
@@ -37,7 +38,6 @@ app.use('/mp3files', express.static(path.join(__dirname, 'mp3files')));
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(async () => {
-    console.log('MongoDB connected');
     // Start Agenda scheduler after MongoDB is ready
     try {
       await startScheduler(process.env.MONGODB_URI);
@@ -61,6 +61,7 @@ app.use("/api", progressRoutes);
 app.use("/api/daily-challenge", dailyChallengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/notification", notificationRoutes);
+app.use("/api/referral", referralRoutes);
 app.use("*", (req, res) => res.status(404).json({ msg: "Not found" }));
 
 // Error handler
@@ -69,21 +70,17 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 3004;
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
-  console.log(`${signal} received. Shutting down gracefully...`);
   try {
     await stopScheduler();
   } catch (err) {
     console.error('Error stopping scheduler:', err);
   }
   server.close(() => {
-    console.log('HTTP server closed');
     mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed');
       process.exit(0);
     });
   });

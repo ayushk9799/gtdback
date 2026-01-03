@@ -21,10 +21,8 @@ export async function startScheduler(mongoUri) {
 
     // Define the job
     agenda.define('send daily case notifications', async (job) => {
-        console.log('Running scheduled job: send daily case notifications');
         try {
             const stats = await sendPersonalizedNotifications();
-            console.log('Job stats:', stats);
         } catch (error) {
             console.error('Job error:', error);
         }
@@ -32,12 +30,10 @@ export async function startScheduler(mongoUri) {
 
     // Start agenda
     await agenda.start();
-    console.log('Agenda scheduler started');
 
     // Schedule daily at 9:00 AM IST (which is 3:30 AM UTC)
     // Cron: minute hour day month dayOfWeek
     await agenda.every('0 3 * * *', 'send daily case notifications', {}, { timezone: 'Asia/Kolkata' });
-    console.log('Scheduled: send daily case notifications at 9:00 AM IST');
 
     return agenda;
 }
@@ -48,7 +44,6 @@ export async function startScheduler(mongoUri) {
 export async function stopScheduler() {
     if (agenda) {
         await agenda.stop();
-        console.log('Agenda scheduler stopped');
     }
 }
 
