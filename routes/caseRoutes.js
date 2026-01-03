@@ -139,6 +139,19 @@ router.post("/bulk", async (req, res, next) => {
   }
 });
 
+// GET /api/cases/ids -> list all business caseIds
+router.get("/ids", async (req, res, next) => {
+  try {
+    const docs = await Case.find({}, { "caseData.caseId": 1, _id: 0 });
+    const caseIds = docs
+      .map((doc) => doc.caseData?.caseId)
+      .filter((id) => id != null);
+    return res.json({ success: true, caseIds });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/cases/diagnoses -> list correct diagnoses for all cases
 // Optional query: ?caseId=NEU005 to filter by business caseId
 router.get("/diagnoses", async (req, res, next) => {
@@ -243,6 +256,48 @@ router.patch("/merge", async (req, res, next) => {
   }
 });
 
+router.patch("/update-mainimage", async (req, res, next) => {
+  try {
+    const { caseIds } = req.body || {};
+
+    if (!Array.isArray(caseIds) || caseIds.length === 0) {
+      return res.status(400).json({ error: "Provide an array of caseIds in request body" });
+    }
+
+    const S3_BASE_URL = "https://gtdthousandways1.s3.ap-south-1.amazonaws.com";
+    const results = [];
+
+    for (const caseId of caseIds) {
+      const mainimage = `${S3_BASE_URL}/${caseId}.jpeg`;
+
+      const updated = await Case.findOneAndUpdate(
+        { "caseData.caseId": caseId },
+        { $set: { "caseData.mainimage": mainimage } },
+        { new: true }
+      );
+
+      if (updated) {
+        results.push({ caseId, mainimage, success: true });
+      } else {
+        results.push({ caseId, success: false, error: "Case not found" });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+
+    return res.json({
+      success: true,
+      summary: {
+        total: caseIds.length,
+        updated: successCount,
+        failed: caseIds.length - successCount
+      },
+      results
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 // POST /api/cases/:caseId/mp3/presign -> presign S3 PUT for one part
 router.post("/:caseId/mp3/presign", async (req, res, next) => {
   try {
@@ -308,7 +363,58 @@ router.get("/:caseId/mp3", async (req, res, next) => {
     next(err);
   }
 });
+router.get("/withoutimage", async (req, res, next) => {
+  try {
+    console.log("hellow")
+    const docs = await Case.find({
 
+      "caseData.mainimage": { $exists: false }
+
+    });
+
+    const caseIds = docs.map((doc) => doc.caseData?.caseId).filter(Boolean);
+
+    return res.json({
+      success: true,
+      count: caseIds.length,
+      caseIds
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+router.get("/summaries", async (req, res, next) => {
+  try {
+    const { caseIds } = req.body || {};
+
+    if (!Array.isArray(caseIds) || caseIds.length === 0) {
+      return res.status(400).json({ error: "Provide an array of caseIds in request body" });
+    }
+
+    // Find all cases matching the provided caseIds
+    const docs = await Case.find({ "caseData.caseId": { $in: caseIds } });
+
+    // Extract simplified summary from each case
+    const summaries = docs.map((doc) => {
+      const data = doc.caseData || {};
+      const firstStep = Array.isArray(data.steps) && data.steps[0]?.data;
+      const basicInfo = firstStep?.basicInfo || {};
+
+      return {
+        caseId: data.caseId || null,
+        caseTitle: data.caseTitle || null,
+        name: basicInfo.name || null,
+        age: basicInfo.age || null,
+        gender: basicInfo.gender || null,
+        chiefComplaint: firstStep?.chiefComplaint || null,
+      };
+    });
+
+    return res.json(summaries);
+  } catch (err) {
+    next(err);
+  }
+});
 
 
 // GET /api/cases/:id -> fetch a single case by ObjectId
@@ -325,7 +431,16 @@ router.get("/:id", async (req, res, next) => {
     next(err);
   }
 });
-//GET using the CaseId
+// POST /api/cases/summaries -> fetch simplified patient summaries for given caseIds
+// Body: { caseIds: ["DAILY001", "NEU005", ...] }
+
+
+// PATCH /api/cases/update-mainimage -> bulk update mainimage for given caseIds
+// Body: { caseIds: ["RHE003", "NEU005", ...] }
+
+
+// GET /api/cases/without-image -> fetch cases where mainImage doesn't exist
+
 
 export default router;
 
