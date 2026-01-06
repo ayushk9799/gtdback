@@ -3,6 +3,7 @@ import Case from "../models/Case.js";
 import DailyChallenge from "../models/DailyChallenge.js";
 import User from "../models/User.js";
 import TopUser from "../models/TopUser.js";
+import DailyChallengeLeaderboard from "../models/DailyChallengeLeaderboard.js";
 
 function computeTotals(points) {
   const { diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points || {};
@@ -287,6 +288,25 @@ export const completeGameplay = async (req, res, next) => {
           }
         );
       } catch (_) { }
+
+      // Update daily challenge leaderboard
+      try {
+        const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
+        if (challenge?.date) {
+          await DailyChallengeLeaderboard.updateOne(
+            { date: challenge.date, userId: gameplay.userId },
+            {
+              $set: {
+                dailyChallengeId: gameplay.dailyChallengeId,
+                gameplayId: gameplay._id,
+                score: gameplay.points?.total || 0,
+                completedAt: gameplay.completedAt || new Date(),
+              }
+            },
+            { upsert: true }
+          );
+        }
+      } catch (_) { }
     }
 
     res.json({ success: true, gameplay });
@@ -474,6 +494,25 @@ export const submitSelections = async (req, res, next) => {
             { $addToSet: { completedDailyChallenges: { dailyChallenge: gameplay.dailyChallengeId, gameplay: gameplay._id } } }
           );
         } catch (_) { }
+
+        // Update daily challenge leaderboard
+        try {
+          const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
+          if (challenge?.date) {
+            await DailyChallengeLeaderboard.updateOne(
+              { date: challenge.date, userId: gameplay.userId },
+              {
+                $set: {
+                  dailyChallengeId: gameplay.dailyChallengeId,
+                  gameplayId: gameplay._id,
+                  score: gameplay.points?.total || 0,
+                  completedAt: gameplay.completedAt || new Date(),
+                }
+              },
+              { upsert: true }
+            );
+          }
+        } catch (_) { }
       }
     }
 
@@ -493,7 +532,6 @@ export const submitSelections = async (req, res, next) => {
         }
       } catch (_) { }
     }
-
     res.json({ success: true, gameplay, updatedUser });
   } catch (err) {
     next(err);

@@ -365,7 +365,6 @@ router.get("/:caseId/mp3", async (req, res, next) => {
 });
 router.get("/withoutimage", async (req, res, next) => {
   try {
-    console.log("hellow")
     const docs = await Case.find({
 
       "caseData.mainimage": { $exists: false }

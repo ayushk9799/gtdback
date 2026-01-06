@@ -87,13 +87,13 @@ GameplaySchema.pre("validate", function (next) {
 // Partial unique index for Case gameplays: one gameplay per user per case
 GameplaySchema.index(
   { userId: 1, caseId: 1 },
-  { unique: true, partialFilterExpression: { caseId: { $ne: null } } }
+  { unique: true, partialFilterExpression: { caseId: { $exists: true, $ne: null } } }
 );
 
 // Partial unique index for DailyChallenge gameplays: one gameplay per user per daily challenge
 GameplaySchema.index(
   { userId: 1, dailyChallengeId: 1 },
-  { unique: true, partialFilterExpression: { dailyChallengeId: { $ne: null } } }
+  { unique: true, partialFilterExpression: { dailyChallengeId: { $exists: true, $ne: null } } }
 );
 
 GameplaySchema.index({ status: 1, startedAt: -1 });

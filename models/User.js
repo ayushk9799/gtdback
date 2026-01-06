@@ -86,6 +86,10 @@ const UserSchema = new mongoose.Schema({
     unique: true,
     sparse: true,  // Allows null but enforces uniqueness when present
   },
+  appliedReferralCode: {
+    type: String,
+    default: null,  // Stores the referral code this user has applied (only one allowed)
+  },
 
 }, { timestamps: true });
 
