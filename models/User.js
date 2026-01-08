@@ -70,7 +70,7 @@ const UserSchema = new mongoose.Schema({
   // Heart management fields
   hearts: {
     type: Number,
-    default: 2,
+    default: 1,
   },
   heartsUpdatedAt: {
     type: Date,
