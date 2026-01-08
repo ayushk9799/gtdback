@@ -85,7 +85,7 @@ export const getUser = async (req, res, next) => {
     // Check if hearts need to be refreshed (new day in user's timezone)
     const userTimezone = user.timezone || timezone || 'UTC';
     if (isNewDay(user.heartsUpdatedAt, userTimezone)) {
-      user.hearts = 2;
+      user.hearts = 1;
       user.heartsUpdatedAt = new Date();
       needsSave = true;
     }
