@@ -1,5 +1,6 @@
 import { Router } from "express";
 import Case from "../models/Case.js";
+import DailyChallenge from "../models/DailyChallenge.js";
 import Category from "../models/Category.js";
 import mongoose from "mongoose";
 // import { buildPublicUrl, presignPutForKey } from "../s3.js";
@@ -298,6 +299,62 @@ router.patch("/update-mainimage", async (req, res, next) => {
     next(err);
   }
 });
+
+// PATCH /api/cases/update-media -> bulk update videooverview and slidedeck for given caseIds
+// Body: { caseIds: ["HEM003", "NEU005", ...], daily: true/false }
+// If daily is true, updates DailyChallenge model; otherwise updates Case model
+router.patch("/update-media", async (req, res, next) => {
+  try {
+    const { caseIds, daily } = req.body || {};
+
+    if (!Array.isArray(caseIds) || caseIds.length === 0) {
+      return res.status(400).json({ error: "Provide an array of caseIds in request body" });
+    }
+
+    const S3_BASE_URL = "https://gtdthousandways1.s3.ap-south-1.amazonaws.com";
+    const results = [];
+    const Model = daily ? DailyChallenge : Case;
+    const modelName = daily ? "DailyChallenge" : "Case";
+
+    for (const caseId of caseIds) {
+      const videooverview = `${S3_BASE_URL}/videooverview/${caseId}.mp4`;
+      const slidedeck = `${S3_BASE_URL}/slidedeck/${caseId}.pdf`;
+
+      const updated = await Model.findOneAndUpdate(
+        { "caseData.caseId": caseId },
+        {
+          $set: {
+            "caseData.videooverview": videooverview,
+            "caseData.slidedeck": slidedeck
+          }
+        },
+        { new: true }
+      );
+
+      if (updated) {
+        results.push({ caseId, videooverview, slidedeck, success: true });
+      } else {
+        results.push({ caseId, success: false, error: `${modelName} not found` });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+
+    return res.json({
+      success: true,
+      model: modelName,
+      summary: {
+        total: caseIds.length,
+        updated: successCount,
+        failed: caseIds.length - successCount
+      },
+      results
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/cases/:caseId/mp3/presign -> presign S3 PUT for one part
 router.post("/:caseId/mp3/presign", async (req, res, next) => {
   try {
