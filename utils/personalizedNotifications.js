@@ -110,21 +110,51 @@ async function sendBatch(messages) {
 }
 
 /**
- * Main function: Send personalized notifications to all users with FCM tokens
+ * Main function: Send personalized notifications to users with FCM tokens
  * Uses MongoDB cursor for memory-safe streaming
+ * 
+ * @param {string[]|null} timezones - Optional array of IANA timezone strings to filter users.
+ *                                    If null, sends to all users (backward compatible).
  */
-export async function sendPersonalizedNotifications() {
+export async function sendPersonalizedNotifications(timezones = null) {
     const startTime = Date.now();
 
-    // Create cursor - streams users one by one, never loads all into memory
-    const cursor = User.find({
+    // Build the query filter
+    let query = {
         fcmToken: { $exists: true, $ne: null }
-    })
-        .select('_id fcmToken completedCases')
+    };
+
+    // If timezones specified, filter by timezone
+    if (timezones && timezones.length > 0) {
+        // Include users with matching timezone OR users with no timezone set (for backward compat with Asia/Kolkata)
+        const includeNullTimezone = timezones.includes('Asia/Kolkata');
+
+        if (includeNullTimezone) {
+            // IST users: include both explicit Asia/Kolkata AND null timezone (legacy users)
+            query.$or = [
+                { timezone: { $in: timezones } },
+                { timezone: null },
+                { timezone: { $exists: false } }
+            ];
+        } else {
+            query.timezone = { $in: timezones };
+        }
+    }
+
+    // Create cursor - streams users one by one, never loads all into memory
+    const cursor = User.find(query)
+        .select('_id fcmToken completedCases timezone')
         .cursor();
 
     let batch = [];
-    let stats = { totalSent: 0, totalFailed: 0, totalCleaned: 0, usersProcessed: 0, noCaseUsers: 0 };
+    let stats = {
+        timezones: timezones || 'all',
+        totalSent: 0,
+        totalFailed: 0,
+        totalCleaned: 0,
+        usersProcessed: 0,
+        noCaseUsers: 0
+    };
 
     // Process users one by one
     for await (const user of cursor) {

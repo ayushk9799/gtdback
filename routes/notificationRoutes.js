@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { sendToToken, sendToTopic } from '../utils/Notification.js';
-import { triggerNow } from '../jobs/notificationScheduler.js';
+import { triggerNow, getTimezonesAtTargetHoursNow } from '../jobs/notificationScheduler.js';
 import User from '../models/User.js';
 import Case from '../models/Case.js';
 
@@ -115,6 +115,31 @@ router.post('/test-personalized', async (req, res) => {
       response: resp
     });
 
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Debug: Check which timezones are currently at 12 AM or 8 AM
+ * GET /api/notification/timezone-status
+ */
+router.get('/timezone-status', async (req, res) => {
+  try {
+    const targetTimezones = getTimezonesAtTargetHoursNow();
+    const userCounts = await User.aggregate([
+      { $match: { fcmToken: { $exists: true, $ne: null } } },
+      { $group: { _id: '$timezone', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    res.status(200).json({
+      currentTimeUTC: new Date().toISOString(),
+      targetHours: [0, 8],
+      timezonesAtTargetHours: targetTimezones,
+      wouldNotifyUsers: targetTimezones.length > 0,
+      usersByTimezone: userCounts
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import Category from "../models/Category.js";
 import Gameplay from "../models/Gameplay.js";
 import TopUser from "../models/TopUser.js";
+import SupportedTimezone from "../models/SupportedTimezone.js";
 
 /**
  * Check if hearts need to be refreshed based on user's timezone.
@@ -80,6 +81,8 @@ export const getUser = async (req, res, next) => {
     if (timezone && user.timezone !== timezone) {
       user.timezone = timezone;
       needsSave = true;
+      // Add timezone to supported list if new
+    await SupportedTimezone.addIfNew(timezone);
     }
 
     // Check if hearts need to be refreshed (new day in user's timezone)
