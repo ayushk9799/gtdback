@@ -82,7 +82,6 @@ export const getChallengeByDate = async (req, res, next) => {
     });
     const todayStr = formatter.format(new Date());
     const isBackdate = date < todayStr;
-    console.log(date, todayStr, isBackdate);
 
     // Check if user is premium (allows unlimited backdate access)
     let isPremium = false;
@@ -318,7 +317,18 @@ export const getAllDailyChallenges = async (req, res, next) => {
     const challenges = await DailyChallenge.find(filter)
       .sort(sort)
       .limit(parseInt(limit))
-      .select('date metadata createdAt updatedAt');
+      .select('date metadata caseData.mainimage createdAt updatedAt');
+
+    // Map challenges to include mainimage in the response
+    const mappedChallenges = challenges.map(challenge => ({
+      date: challenge.date,
+      metadata: {
+        ...challenge.metadata,
+        mainimage: challenge.caseData?.mainimage || null,
+      },
+      createdAt: challenge.createdAt,
+      updatedAt: challenge.updatedAt,
+    }));
 
     const total = await DailyChallenge.countDocuments();
 
@@ -330,7 +340,7 @@ export const getAllDailyChallenges = async (req, res, next) => {
 
     res.json({
       success: true,
-      challenges,
+      challenges: mappedChallenges,
       pagination: {
         total,
         limit: parseInt(limit),
