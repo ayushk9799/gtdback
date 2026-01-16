@@ -34,6 +34,11 @@ const GameplaySchema = new mongoose.Schema(
       enum: ["in_progress", "completed"],
       default: "in_progress",
     },
+    // Flag for premium backdate plays (points not counted towards leaderboard/cumulative)
+    isBackdatePlay: {
+      type: Boolean,
+      default: false,
+    },
     startedAt: {
       type: Date,
       default: Date.now,

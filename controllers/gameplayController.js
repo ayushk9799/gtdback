@@ -96,9 +96,17 @@ export const startOrGetGameplay = async (req, res, next) => {
       if (!userExists) return res.status(404).json({ error: "User not found" });
       if (!challengeExists) return res.status(404).json({ error: "Daily challenge not found" });
 
+      // Check if this is a backdate play (for premium users practicing old challenges)
+      const isBackdatePlay = req.body.isBackdatePlay === true;
+
       let gameplay = await Gameplay.findOne({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
       if (!gameplay) {
-        gameplay = await Gameplay.create({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
+        gameplay = await Gameplay.create({
+          userId,
+          dailyChallengeId,
+          sourceType: "dailyChallenge",
+          isBackdatePlay: isBackdatePlay
+        });
       }
 
       return res.status(201).json({ success: true, gameplay });
@@ -254,13 +262,16 @@ export const completeGameplay = async (req, res, next) => {
     await gameplay.save();
 
     // Update cumulative points: if first completion, add full; else add delta
-    try {
-      const newTotal = gameplay.points?.total || 0;
-      const baselineTotal = wasCompletedBefore ? prevTotal : 0;
-      const inc = { "cumulativePoints.total": newTotal - baselineTotal };
-      await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
-      await updateLeaderboardForUser(gameplay.userId);
-    } catch (_) { }
+    // SKIP for backdate plays - premium practice mode doesn't affect cumulative points
+    if (!gameplay.isBackdatePlay) {
+      try {
+        const newTotal = gameplay.points?.total || 0;
+        const baselineTotal = wasCompletedBefore ? prevTotal : 0;
+        const inc = { "cumulativePoints.total": newTotal - baselineTotal };
+        await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
+        await updateLeaderboardForUser(gameplay.userId);
+      } catch (_) { }
+    }
 
     // Upsert into User.completedCases for quick lookup (only for case type)
     if (gameplay.sourceType === "case" && gameplay.caseId) {
@@ -290,23 +301,26 @@ export const completeGameplay = async (req, res, next) => {
       } catch (_) { }
 
       // Update daily challenge leaderboard
-      try {
-        const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
-        if (challenge?.date) {
-          await DailyChallengeLeaderboard.updateOne(
-            { date: challenge.date, userId: gameplay.userId },
-            {
-              $set: {
-                dailyChallengeId: gameplay.dailyChallengeId,
-                gameplayId: gameplay._id,
-                score: gameplay.points?.total || 0,
-                completedAt: gameplay.completedAt || new Date(),
-              }
-            },
-            { upsert: true }
-          );
-        }
-      } catch (_) { }
+      // SKIP for backdate plays - premium practice mode doesn't affect leaderboard
+      if (!gameplay.isBackdatePlay) {
+        try {
+          const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
+          if (challenge?.date) {
+            await DailyChallengeLeaderboard.updateOne(
+              { date: challenge.date, userId: gameplay.userId },
+              {
+                $set: {
+                  dailyChallengeId: gameplay.dailyChallengeId,
+                  gameplayId: gameplay._id,
+                  score: gameplay.points?.total || 0,
+                  completedAt: gameplay.completedAt || new Date(),
+                }
+              },
+              { upsert: true }
+            );
+          }
+        } catch (_) { }
+      }
     }
 
     res.json({ success: true, gameplay });
@@ -352,7 +366,8 @@ export const submitSelections = async (req, res, next) => {
       treatmentIndices,
       penaltiesDelta,
       complete,
-      points
+      points,
+      isBackdatePlay
     } = req.body || {};
 
     let gameplay = null;
@@ -406,7 +421,12 @@ export const submitSelections = async (req, res, next) => {
 
         gameplay = await Gameplay.findOne({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
         if (!gameplay) {
-          gameplay = await Gameplay.create({ userId, dailyChallengeId, sourceType: "dailyChallenge" });
+          gameplay = await Gameplay.create({
+            userId,
+            dailyChallengeId,
+            sourceType: "dailyChallenge",
+            isBackdatePlay: isBackdatePlay === true
+          });
         }
       } else {
         return res.status(400).json({ error: "Invalid sourceType. Must be 'case' or 'dailyChallenge'" });
@@ -468,7 +488,8 @@ export const submitSelections = async (req, res, next) => {
 
     // Update User.cumulativePoints only when this call represents a completed state.
     // If completing for the first time, add full points. If already completed, add only the delta.
-    if (complete) {
+    // SKIP for backdate plays - premium practice mode doesn't affect cumulative points
+    if (complete && !gameplay.isBackdatePlay) {
       try {
         const newTotal = gameplay.points?.total || 0;
         const baselineTotal = wasCompletedBefore ? prevTotal : 0;
@@ -496,23 +517,26 @@ export const submitSelections = async (req, res, next) => {
         } catch (_) { }
 
         // Update daily challenge leaderboard
-        try {
-          const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
-          if (challenge?.date) {
-            await DailyChallengeLeaderboard.updateOne(
-              { date: challenge.date, userId: gameplay.userId },
-              {
-                $set: {
-                  dailyChallengeId: gameplay.dailyChallengeId,
-                  gameplayId: gameplay._id,
-                  score: gameplay.points?.total || 0,
-                  completedAt: gameplay.completedAt || new Date(),
-                }
-              },
-              { upsert: true }
-            );
-          }
-        } catch (_) { }
+        // SKIP for backdate plays - premium practice mode doesn't affect leaderboard
+        if (!gameplay.isBackdatePlay) {
+          try {
+            const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
+            if (challenge?.date) {
+              await DailyChallengeLeaderboard.updateOne(
+                { date: challenge.date, userId: gameplay.userId },
+                {
+                  $set: {
+                    dailyChallengeId: gameplay.dailyChallengeId,
+                    gameplayId: gameplay._id,
+                    score: gameplay.points?.total || 0,
+                    completedAt: gameplay.completedAt || new Date(),
+                  }
+                },
+                { upsert: true }
+              );
+            }
+          } catch (_) { }
+        }
       }
     }
 
