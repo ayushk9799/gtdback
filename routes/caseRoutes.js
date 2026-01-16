@@ -300,6 +300,71 @@ router.patch("/update-mainimage", async (req, res, next) => {
   }
 });
 
+// PATCH /api/cases/update-physicalimage -> bulk update physicalimage array for given case _ids
+// Body: { cases: [{ _id: "ObjectId", physicalimage: [{ url: "...", tag: "..." }, ...] }, ...] }
+// Also supports: { cases: [{ _id: "ObjectId", physicalimage: [{ url: "...", tag: { ... } }, ...] }, ...] }
+router.patch("/update-physicalimage", async (req, res, next) => {
+  try {
+    const { cases, daily } = req.body || {};
+
+    if (!Array.isArray(cases) || cases.length === 0) {
+      return res.status(400).json({ error: "Provide an array of cases with _id and physicalimage in request body" });
+    }
+
+    const results = [];
+    const Model = daily ? DailyChallenge : Case;
+    const modelName = daily ? "DailyChallenge" : "Case";
+
+    for (const caseItem of cases) {
+      const { _id, physicalimage } = caseItem;
+
+      if (!_id) {
+        results.push({ _id: null, success: false, error: "Missing _id" });
+        continue;
+      }
+
+      if (!Array.isArray(physicalimage)) {
+        results.push({ _id, success: false, error: "physicalimage must be an array" });
+        continue;
+      }
+
+      // Validate each physicalimage item has url
+      const validImages = physicalimage.every(img => img && typeof img.url === "string");
+      if (!validImages) {
+        results.push({ _id, success: false, error: "Each physicalimage item must have a url string" });
+        continue;
+      }
+
+      const updated = await Model.findByIdAndUpdate(
+        _id,
+        { $set: { "caseData.physicalimage": physicalimage } },
+        { new: true }
+      );
+
+      if (updated) {
+        results.push({ _id, physicalimage, success: true });
+      } else {
+        results.push({ _id, success: false, error: `${modelName} not found` });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+
+    return res.json({
+      success: true,
+      model: modelName,
+      summary: {
+        total: cases.length,
+        updated: successCount,
+        failed: cases.length - successCount
+      },
+      results
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /api/cases/update-media -> bulk update videooverview and slidedeck for given caseIds
 // Body: { caseIds: ["HEM003", "NEU005", ...], daily: true/false }
 // If daily is true, updates DailyChallenge model; otherwise updates Case model
