@@ -307,7 +307,7 @@ export const deleteDailyChallenge = async (req, res, next) => {
 // Supports cursor-based pagination with lastDate for efficient infinite scroll
 export const getAllDailyChallenges = async (req, res, next) => {
   try {
-    const { limit = 10, lastDate, sort = '-date' } = req.query;
+    const { limit = 10, lastDate, sort = '-date', userId } = req.query;
 
     // Cursor-based filter: get challenges older than lastDate
     const filter = lastDate
@@ -319,13 +319,31 @@ export const getAllDailyChallenges = async (req, res, next) => {
       .limit(parseInt(limit))
       .select('date metadata caseData.mainimage createdAt updatedAt');
 
-    // Map challenges to include mainimage in the response
+    // Get user's completed daily challenges if userId is provided
+    let completedDates = new Set();
+    if (userId) {
+      const user = await User.findById(userId)
+        .select('completedDailyChallenges')
+        .populate({ path: 'completedDailyChallenges.dailyChallenge', select: 'date' })
+        .lean();
+
+      if (user?.completedDailyChallenges) {
+        user.completedDailyChallenges.forEach(dc => {
+          if (dc.dailyChallenge?.date) {
+            completedDates.add(dc.dailyChallenge.date);
+          }
+        });
+      }
+    }
+
+    // Map challenges to include mainimage and completion status in the response
     const mappedChallenges = challenges.map(challenge => ({
       date: challenge.date,
       metadata: {
         ...challenge.metadata,
         mainimage: challenge.caseData?.mainimage || null,
       },
+      isCompleted: completedDates.has(challenge.date),
       createdAt: challenge.createdAt,
       updatedAt: challenge.updatedAt,
     }));
