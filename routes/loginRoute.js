@@ -18,7 +18,7 @@ const appleJwksClient = jwksClient({
 router.post("/google/loginSignUp", async (req, res) => {
   try {
     const { token, platform } = req.body;
-    let flag=0;
+    let flag = 0;
 
     if (!token) {
       return res.status(400).json({ error: "Token is required" });
@@ -32,7 +32,7 @@ router.post("/google/loginSignUp", async (req, res) => {
       client = new OAuth2Client(
         "125181194595-joc9v9367fldq9qigu2bh9uoosq4u67d.apps.googleusercontent.com"
       );
-      flag=1;
+      flag = 1;
     }
 
     // Verify the token
@@ -54,7 +54,7 @@ router.post("/google/loginSignUp", async (req, res) => {
       user = await User.create({
         email: payload.email,
         name: payload.name,
-        platform: flag==1?"ios":platform,
+        platform: flag == 1 ? "ios" : platform,
       });
     }
 
