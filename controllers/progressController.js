@@ -125,7 +125,13 @@ export const getDepartmentProgress = async (req, res, next) => {
       pipeline.push(
         {
           $addFields: {
-            unsolvedCaseIds: { $setDifference: ["$caseList", "$completedCaseIds"] },
+            unsolvedCaseIds: {
+              $filter: {
+                input: "$caseList",
+                as: "id",
+                cond: { $not: { $in: ["$$id", "$completedCaseIds"] } }
+              }
+            }
           },
         },
         {
@@ -158,6 +164,7 @@ export const getDepartmentProgress = async (req, res, next) => {
                 as: "c",
                 in: {
                   caseId: "$$c._id",
+                  originalIndex: { $indexOfArray: ["$caseList", "$$c._id"] },
                   caseTitle: { $ifNull: ["$$c.caseData.caseTitle", ""] },
                   chiefComplaint: {
                     $ifNull: [
