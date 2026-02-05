@@ -16,6 +16,7 @@ import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import referralRoutes from "./routes/referralRoutes.js";
+import quizzRoutes from "./routes/quizzRoutes.js";
 import { startScheduler, stopScheduler } from "./jobs/notificationScheduler.js";
 
 dotenv.config({ path: "./config/config.env" });
@@ -62,6 +63,7 @@ app.use("/api/daily-challenge", dailyChallengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/notification", notificationRoutes);
 app.use("/api/referral", referralRoutes);
+app.use("/api/quizz", quizzRoutes);
 app.use("*", (req, res) => res.status(404).json({ msg: "Not found" }));
 
 // Error handler
