@@ -109,26 +109,31 @@ export const getAllQuizzCategories = async (req, res, next) => {
 };
 
 const DEPARTMENT_MAPPING = {
-    "tox": "toxicology",
-    "rheum": "rheumatology",
-    "hem": "hematology",
-    "onc": "oncology",
-    "id": "infectious disease",
-    "neuro": "neurology",
-    "nepho": "nephrology",
-    "gastro": "gastroenterology",
-    "pulmo": "pulmonology",
-    "ortho": "orthopedics",
-    "ent": "otolaryngology (ent)",
-    "ophth": "ophthalmology",
-    "endo": "endocrinology",
-    "obgyn": "obstetrics & gynecology (ob/gyn)",
-    "psych": "psychiatry",
-    "cardio": "cardiology",
-    "derm": "dermatology",
+    // Internal Medicine
+    "tox": "internal medicine",
+    "rheum": "internal medicine",
+    "hem": "internal medicine",
+    "onc": "internal medicine",
+    "id": "internal medicine",
+    "nepho": "internal medicine",
+    "gastro": "internal medicine",
+    "endo": "internal medicine",
+    "gen": "internal medicine",
+    "med": "internal medicine",
+
+    // Others
+    "surg": "general surgery",
     "em": "emergency medicine",
     "peds": "pediatrics",
-    "gen": "genetics"
+    "obgyn": "obstetrics & gynecology",
+    "ortho": "orthopedics",
+    "cardio": "cardiology",
+    "neuro": "neurology",
+    "pulmo": "pulmonology",
+    "derm": "dermatology",
+    "ent": "otolaryngology",
+    "ophth": "ophthalmology",
+    "psych": "psychiatry"
 };
 
 /**
@@ -213,20 +218,100 @@ export const bulkUploadQuizzes = async (req, res, next) => {
  */
 export const getAllQuizzes = async (req, res, next) => {
     try {
-        const { category, page = 1, limit = 10, userId, excludeAttempted } = req.query;
+        const { category, page = 1, limit = 10, userId, excludeAttempted, onlyAttempted } = req.query;
         let query = {};
 
         if (category && category !== 'null') {
             query.category = category;
         }
 
+        const isExcluding = excludeAttempted === 'true';
+        const isOnlyAttempted = onlyAttempted === 'true';
+
         // Scalability Optimization: If excludeAttempted is true, fetch user's attempts first
-        if (excludeAttempted === 'true' && userId) {
+        if (isExcluding && userId) {
             const userAttempts = await QuizzAttempt.find({ userId }).select("quizzId").lean();
             const attemptedIds = userAttempts.map(a => a.quizzId);
             if (attemptedIds.length > 0) {
                 query._id = { $nin: attemptedIds };
             }
+        }
+
+        // NEW: If onlyAttempted is true, fetch only quizzes the user has attempted
+        // Use pagination on ATTEMPTS first, then fetch corresponding quizzes
+        if (isOnlyAttempted && userId) {
+            const pageNum = parseInt(page, 10) || 1;
+            const limitNum = parseInt(limit, 10) || 10;
+            const skip = (pageNum - 1) * limitNum;
+
+            // Get total count of attempts for this user (with category filter if needed)
+            let attemptQuery = { userId };
+
+            // If category filter exists, we need to find quizzes in that category first
+            let categoryQuizIds = null;
+            if (category && category !== 'null') {
+                const categoryQuizzes = await Quizz.find({ category }).select("_id").lean();
+                categoryQuizIds = categoryQuizzes.map(q => q._id);
+                attemptQuery.quizzId = { $in: categoryQuizIds };
+            }
+
+            const totalAttempts = await QuizzAttempt.countDocuments(attemptQuery);
+
+            // Fetch only the paginated attempts (most recent first)
+            const paginatedAttempts = await QuizzAttempt.find(attemptQuery)
+                .select("quizzId timestamp selectedOption isCorrect")
+                .sort({ timestamp: -1 }) // Most recent first
+                .skip(skip)
+                .limit(limitNum)
+                .lean();
+
+            if (paginatedAttempts.length === 0) {
+                return res.status(200).json({
+                    success: true,
+                    count: 0,
+                    total: totalAttempts,
+                    page: pageNum,
+                    hasMore: false,
+                    data: [],
+                });
+            }
+
+            const attemptedIds = paginatedAttempts.map(a => a.quizzId);
+
+            // Fetch the corresponding quizzes
+            const quizzes = await Quizz.find({ _id: { $in: attemptedIds } })
+                .populate("category", "name")
+                .lean();
+
+            // Create a map for quick lookup and attach attempt info
+            const attemptMap = {};
+            paginatedAttempts.forEach(a => {
+                attemptMap[a.quizzId.toString()] = {
+                    selectedOption: a.selectedOption,
+                    isCorrect: a.isCorrect,
+                    timestamp: a.timestamp
+                };
+            });
+
+            // Sort quizzes to match the attempt order (most recent first)
+            const orderedQuizzes = attemptedIds.map(id => {
+                const quiz = quizzes.find(q => q._id.toString() === id.toString());
+                if (quiz) {
+                    quiz.attempt = attemptMap[id.toString()];
+                }
+                return quiz;
+            }).filter(Boolean);
+
+            const hasMore = skip + orderedQuizzes.length < totalAttempts;
+
+            return res.status(200).json({
+                success: true,
+                count: orderedQuizzes.length,
+                total: totalAttempts,
+                page: pageNum,
+                hasMore,
+                data: orderedQuizzes,
+            });
         }
 
         const pageNum = parseInt(page, 10) || 1;
@@ -237,7 +322,30 @@ export const getAllQuizzes = async (req, res, next) => {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limitNum)
-            .populate("category", "name");
+            .populate("category", "name")
+            .lean();
+
+        // If not excluding, and userId is provided, attach attempt info
+        if (!isExcluding && userId && quizzes.length > 0) {
+            const quizIds = quizzes.map(q => q._id);
+            const userAttempts = await QuizzAttempt.find({
+                userId,
+                quizzId: { $in: quizIds }
+            }).lean();
+
+            const attemptMap = {};
+            userAttempts.forEach(a => {
+                attemptMap[a.quizzId.toString()] = {
+                    selectedOption: a.selectedOption,
+                    isCorrect: a.isCorrect,
+                    timestamp: a.timestamp
+                };
+            });
+
+            quizzes.forEach(q => {
+                q.attempt = attemptMap[q._id.toString()] || null;
+            });
+        }
 
         const total = await Quizz.countDocuments(query);
         const hasMore = skip + quizzes.length < total;
