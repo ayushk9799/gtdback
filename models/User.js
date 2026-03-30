@@ -70,15 +70,11 @@ const UserSchema = new mongoose.Schema({
   // Heart management fields
   hearts: {
     type: Number,
-    default: 1,
-  },
-  heartsUpdatedAt: {
-    type: Date,
-    default: Date.now,
+    default: 2,
   },
   timezone: {
     type: String,
-    default: null,  // e.g., "America/New_York", "Asia/Kolkata"
+    default: null,
   },
   // Referral system
   referralCode: {

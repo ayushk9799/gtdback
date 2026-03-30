@@ -2,27 +2,7 @@ import User from "../models/User.js";
 import Category from "../models/Category.js";
 import Gameplay from "../models/Gameplay.js";
 import TopUser from "../models/TopUser.js";
-import SupportedTimezone from "../models/SupportedTimezone.js";
 
-/**
- * Check if hearts need to be refreshed based on user's timezone.
- * Hearts reset at midnight in the user's local timezone.
- */
-const isNewDay = (heartsUpdatedAt, timezone) => {
-  if (!heartsUpdatedAt) return true;
-
-  const now = new Date();
-  const lastUpdate = new Date(heartsUpdatedAt);
-
-  try {
-    const nowLocal = now.toLocaleDateString('en-US', { timeZone: timezone });
-    const lastLocal = lastUpdate.toLocaleDateString('en-US', { timeZone: timezone });
-    return nowLocal !== lastLocal;
-  } catch (e) {
-    // Fallback to UTC if timezone is invalid
-    return now.toDateString() !== lastUpdate.toDateString();
-  }
-};
 
 // GET /api/users/:userId/next-cases
 // Returns per-category the next unplayed case (first case in each category not in completed list)
@@ -70,28 +50,11 @@ export const getNextCasesPerDepartment = async (req, res, next) => {
 export const getUser = async (req, res, next) => {
   try {
     const { userID } = req.params;
-    const { timezone } = req.query;  // Client sends their timezone
 
     const user = await User.findById(userID);
     if (!user) return res.status(404).json({ error: "User not found" });
 
     let needsSave = false;
-
-    // Update timezone if provided and different from stored
-    if (timezone && user.timezone !== timezone) {
-      user.timezone = timezone;
-      needsSave = true;
-      // Add timezone to supported list if new
-    await SupportedTimezone.addIfNew(timezone);
-    }
-
-    // Check if hearts need to be refreshed (new day in user's timezone)
-    const userTimezone = user.timezone || timezone || 'UTC';
-    if (isNewDay(user.heartsUpdatedAt, userTimezone)) {
-      user.hearts = 1;
-      user.heartsUpdatedAt = new Date();
-      needsSave = true;
-    }
 
     // Generate referral code for existing users who don't have one
     if (!user.referralCode) {
@@ -171,6 +134,10 @@ export const useHeart = async (req, res, next) => {
 
     const user = await User.findById(userID);
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (user.hearts <= 0) {
+      return res.status(400).json({ error: "No hearts remaining" });
+    }
 
     user.hearts = user.hearts - 1;
     await user.save();
