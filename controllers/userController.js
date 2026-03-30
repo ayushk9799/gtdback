@@ -50,11 +50,18 @@ export const getNextCasesPerDepartment = async (req, res, next) => {
 export const getUser = async (req, res, next) => {
   try {
     const { userID } = req.params;
+    const { timezone } = req.query;
 
     const user = await User.findById(userID);
     if (!user) return res.status(404).json({ error: "User not found" });
 
     let needsSave = false;
+
+    // Update timezone if provided and different from stored
+    if (timezone && user.timezone !== timezone) {
+      user.timezone = timezone;
+      needsSave = true;
+    }
 
     // Generate referral code for existing users who don't have one
     if (!user.referralCode) {
