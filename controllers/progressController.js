@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Category from "../models/Category.js";
+import { deepMerge } from "../utils/deepMerge.js";
 
 // GET /api/users/:userId/progress/department?limit=2
 export const getDepartmentProgress = async (req, res, next) => {
@@ -78,7 +79,7 @@ export const getDepartmentProgress = async (req, res, next) => {
                   }
                 }
               },
-              { $project: { caseData: 1, status: 1 } },
+              { $project: { caseData: 1, translations: 1, status: 1 } },
             ],
             as: "allCasesRaw",
           },
@@ -87,6 +88,7 @@ export const getDepartmentProgress = async (req, res, next) => {
           $project: {
             categoryId: "$_id",
             name: "$name",
+            translations: 1,
             totalCount: 1,
             completedCount: 1,
             cases: {
@@ -96,6 +98,7 @@ export const getDepartmentProgress = async (req, res, next) => {
                 in: {
                   caseId: "$$c._id",
                   status: "$$c.status",
+                  translations: "$$c.translations",
                   caseTitle: { $ifNull: ["$$c.caseData.caseTitle", ""] },
                   chiefComplaint: {
                     $ifNull: [
@@ -146,16 +149,16 @@ export const getDepartmentProgress = async (req, res, next) => {
             let: { ids: "$unsolvedLimited" },
             pipeline: [
               { $match: { $expr: { $in: ["$_id", "$$ids"] } } },
-              { $project: { caseData: 1 } },
+              { $project: { caseData: 1, translations: 1 } },
             ],
             as: "unsolvedCasesRaw",
           },
         },
-        // Project final shape
         {
           $project: {
             categoryId: "$_id",
             name: "$name",
+            translations: 1,
             totalCount: 1,
             completedCount: 1,
             unsolvedCases: {
@@ -164,6 +167,7 @@ export const getDepartmentProgress = async (req, res, next) => {
                 as: "c",
                 in: {
                   caseId: "$$c._id",
+                  translations: "$$c.translations",
                   originalIndex: { $indexOfArray: ["$caseList", "$$c._id"] },
                   caseTitle: { $ifNull: ["$$c.caseData.caseTitle", ""] },
                   chiefComplaint: {
@@ -192,7 +196,41 @@ export const getDepartmentProgress = async (req, res, next) => {
       );
     }
 
-    const departments = await Category.aggregate(pipeline);
+    const rawDepartments = await Category.aggregate(pipeline);
+    const { lang = "en" } = req.query;
+
+    const departments = rawDepartments.map(dept => {
+      let processedDept = { ...dept };
+      
+      // 1. Merge category name translation
+      if (lang !== "en" && dept.translations?.[lang]) {
+        processedDept = deepMerge(processedDept, dept.translations[lang]);
+      }
+
+      // 2. Merge case translations (for lists)
+      const mergeCaseTranslation = (c) => {
+        let p = { ...c };
+        if (lang !== "en" && c.translations?.[lang]) {
+          const t = c.translations[lang];
+          if (t.caseTitle) p.caseTitle = t.caseTitle;
+          // Look for chiefComplaint in steps[0].data
+          const chief = t.steps?.[0]?.data?.chiefComplaint;
+          if (chief) p.chiefComplaint = chief;
+        }
+        delete p.translations; // Remove unwanted field from response
+        return p;
+      };
+
+      if (processedDept.cases) {
+        processedDept.cases = processedDept.cases.map(mergeCaseTranslation);
+      }
+      if (processedDept.unsolvedCases) {
+        processedDept.unsolvedCases = processedDept.unsolvedCases.map(mergeCaseTranslation);
+      }
+
+      delete processedDept.translations;
+      return processedDept;
+    });
 
     return res.json({ success: true, departments });
   } catch (err) {

@@ -4,6 +4,7 @@ import DailyChallenge from "../models/DailyChallenge.js";
 import User from "../models/User.js";
 import TopUser from "../models/TopUser.js";
 import DailyChallengeLeaderboard from "../models/DailyChallengeLeaderboard.js";
+import { deepMerge } from "../utils/deepMerge.js";
 
 function computeTotals(points) {
   const { diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points || {};
@@ -118,16 +119,51 @@ export const startOrGetGameplay = async (req, res, next) => {
   }
 };
 
-// GET /api/gameplays/:id
+// GET /api/gameplays/:id?lang=en
 export const getGameplay = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { lang = "en" } = req.query;
+
     const gameplay = await Gameplay.findById(id)
       .populate("userId", "name email")
       .populate("caseId")
       .populate("dailyChallengeId");
+
     if (!gameplay) return res.status(404).json({ error: "Gameplay not found" });
-    res.json({ success: true, gameplay });
+
+    // Read translation data from original Mongoose docs BEFORE toObject(),
+    // because Mongoose Maps survive toObject() and bracket notation fails on them.
+    let caseLangData = null;
+    let dailyLangData = null;
+    if (lang !== "en") {
+      if (gameplay.caseId && gameplay.caseId.translations?.get?.(lang)) {
+        // JSON round-trip to get a clean plain object (populated Mongoose docs
+        // can return wrapped objects from Map.get that confuse deepMerge)
+        caseLangData = JSON.parse(JSON.stringify(gameplay.caseId.translations.get(lang)));
+      }
+      if (gameplay.dailyChallengeId && gameplay.dailyChallengeId.translations?.get?.(lang)) {
+        dailyLangData = JSON.parse(JSON.stringify(gameplay.dailyChallengeId.translations.get(lang)));
+      }
+    }
+
+    const gp = gameplay.toObject();
+
+    // Now merge translations into the plain caseData objects
+    if (caseLangData) {
+      gp.caseId.caseData = deepMerge(gp.caseId.caseData, caseLangData);
+      if (caseLangData.mp3) {
+        gp.caseId.mp3 = { ...(gp.caseId.mp3 || {}), ...caseLangData.mp3 };
+      }
+    }
+    if (dailyLangData) {
+      gp.dailyChallengeId.caseData = deepMerge(gp.dailyChallengeId.caseData, dailyLangData);
+      if (dailyLangData.mp3) {
+        gp.dailyChallengeId.mp3 = { ...(gp.dailyChallengeId.mp3 || {}), ...dailyLangData.mp3 };
+      }
+    }
+
+    res.json({ success: true, gameplay: gp });
   } catch (err) {
     next(err);
   }
@@ -149,13 +185,13 @@ export const listGameplays = async (req, res, next) => {
   }
 };
 
-// GET /api/gameplays/brief?userId=&status=
+// GET /api/gameplays/brief?userId=&status=&lang=
 export const listGameplayBrief = async (req, res, next) => {
   try {
-    const { userId, status } = req.query || {};
+    const { userId, status, lang = "en" } = req.query || {};
     if (!userId) return res.status(400).json({ error: "userId is required" });
     // Delegate to User model helper for consistency
-    const items = await User.listGameplayBrief(userId, status);
+    const items = await User.listGameplayBrief(userId, status, lang);
     res.json({ success: true, items });
   } catch (err) {
     next(err);
@@ -372,6 +408,8 @@ export const submitSelections = async (req, res, next) => {
 
     let gameplay = null;
 
+
+
     // If an id is provided, attempt to load it
     if (id) {
       gameplay = await Gameplay.findById(id);
@@ -437,63 +475,85 @@ export const submitSelections = async (req, res, next) => {
     const wasCompletedBefore = gameplay.status === "completed";
     const prevTotal = gameplay.points?.total || 0;
 
-    // Diagnosis (store selection only; no history in submit)
-    if (typeof diagnosisIndex === "number" && Number.isFinite(diagnosisIndex)) {
-      gameplay.selections.diagnosisIndex = diagnosisIndex;
-    }
 
-    // Tests (dedupe; no history in submit)
-    if (Array.isArray(testIndices)) {
-      for (const idx of testIndices) {
-        if (typeof idx === "number" && Number.isFinite(idx)) {
-          if (!gameplay.selections.testIndices.includes(idx)) {
-            gameplay.selections.testIndices.push(idx);
-          }
-        }
-      }
-    }
-
-    // Treatments (dedupe; no history in submit)
-    if (Array.isArray(treatmentIndices)) {
-      for (const idx of treatmentIndices) {
-        if (typeof idx === "number" && Number.isFinite(idx)) {
-          if (!gameplay.selections.treatmentIndices.includes(idx)) {
-            gameplay.selections.treatmentIndices.push(idx);
-          }
-        }
-      }
-    }
-
-    // Optional penalties (kept for compatibility); no history in submit
-    if (typeof penaltiesDelta === "number") {
-      gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
-    }
-
-    // If frontend provided normalized points, persist as-is (frontend-only scoring)
-    if (points && typeof points === "object") {
-      const { total = 0, diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points;
-      gameplay.points = { total, diagnosis, tests, treatment, penalties };
+    // If re-completing (reattempt), save the NEW attempt data to attempts[] array
+    // and keep the original selections/points on the main document untouched.
+    if (wasCompletedBefore) {
+      const newAttempt = {
+        selections: {
+          diagnosisIndex: typeof diagnosisIndex === "number" ? diagnosisIndex : null,
+          testIndices: Array.isArray(testIndices)
+            ? testIndices.filter(idx => typeof idx === "number" && Number.isFinite(idx))
+            : [],
+          treatmentIndices: Array.isArray(treatmentIndices)
+            ? treatmentIndices.filter(idx => typeof idx === "number" && Number.isFinite(idx))
+            : [],
+        },
+        points: points && typeof points === "object"
+          ? { total: points.total || 0, diagnosis: points.diagnosis || 0, tests: points.tests || 0, treatment: points.treatment || 0, penalties: points.penalties || 0 }
+          : { total: 0, diagnosis: 0, tests: 0, treatment: 0, penalties: 0 },
+        completedAt: new Date(),
+      };
+      gameplay.attempts.push(newAttempt);
     } else {
-      // Fallback to maintaining totals if points not provided
-      gameplay.points = computeTotals(gameplay.points);
-    }
+      // Initial attempt: update the main document's selections and points
 
-    // Optionally complete
-    if (complete) {
-      gameplay.status = "completed";
-      gameplay.completedAt = new Date();
+      // Diagnosis
+      if (typeof diagnosisIndex === "number" && Number.isFinite(diagnosisIndex)) {
+        gameplay.selections.diagnosisIndex = diagnosisIndex;
+      }
+
+      // Tests (merge/dedupe)
+      if (Array.isArray(testIndices)) {
+        for (const idx of testIndices) {
+          if (typeof idx === "number" && Number.isFinite(idx)) {
+            if (!gameplay.selections.testIndices.includes(idx)) {
+              gameplay.selections.testIndices.push(idx);
+            }
+          }
+        }
+      }
+
+      // Treatments (merge/dedupe)
+      if (Array.isArray(treatmentIndices)) {
+        for (const idx of treatmentIndices) {
+          if (typeof idx === "number" && Number.isFinite(idx)) {
+            if (!gameplay.selections.treatmentIndices.includes(idx)) {
+              gameplay.selections.treatmentIndices.push(idx);
+            }
+          }
+        }
+      }
+
+      // Optional penalties
+      if (typeof penaltiesDelta === "number") {
+        gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
+      }
+
+      // Persist normalized points from frontend
+      if (points && typeof points === "object") {
+        const { total = 0, diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points;
+        gameplay.points = { total, diagnosis, tests, treatment, penalties };
+      } else {
+        gameplay.points = computeTotals(gameplay.points);
+      }
+
+      // Optionally complete
+      if (complete) {
+        gameplay.status = "completed";
+        gameplay.completedAt = new Date();
+      }
     }
 
     await gameplay.save();
 
     // Update User.cumulativePoints only when this call represents a completed state.
-    // If completing for the first time, add full points. If already completed, add only the delta.
+    // If completing for the first time, add full points. If already completed, SKIP.
     // SKIP for backdate plays - premium practice mode doesn't affect cumulative points
-    if (complete && !gameplay.isBackdatePlay) {
+    if (complete && !gameplay.isBackdatePlay && !wasCompletedBefore) {
       try {
         const newTotal = gameplay.points?.total || 0;
-        const baselineTotal = wasCompletedBefore ? prevTotal : 0;
-        const inc = { "cumulativePoints.total": newTotal - baselineTotal };
+        const inc = { "cumulativePoints.total": newTotal };
         await User.updateOne({ _id: gameplay.userId }, { $inc: inc });
         await updateLeaderboardForUser(gameplay.userId);
       } catch (_) { }
@@ -517,8 +577,8 @@ export const submitSelections = async (req, res, next) => {
         } catch (_) { }
 
         // Update daily challenge leaderboard
-        // SKIP for backdate plays - premium practice mode doesn't affect leaderboard
-        if (!gameplay.isBackdatePlay) {
+        // SKIP for backdate plays AND SKIP for reattempts - original record should stand
+        if (!gameplay.isBackdatePlay && !wasCompletedBefore) {
           try {
             const challenge = await DailyChallenge.findById(gameplay.dailyChallengeId).select("date").lean();
             if (challenge?.date) {

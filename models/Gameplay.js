@@ -58,6 +58,23 @@ const GameplaySchema = new mongoose.Schema(
       treatment: { type: Number, default: 0 },
       penalties: { type: Number, default: 0 },
     },
+    attempts: [
+      {
+        selections: {
+          diagnosisIndex: { type: Number },
+          testIndices: { type: [Number] },
+          treatmentIndices: { type: [Number] },
+        },
+        points: {
+          total: { type: Number },
+          diagnosis: { type: Number },
+          tests: { type: Number },
+          treatment: { type: Number },
+          penalties: { type: Number },
+        },
+        completedAt: { type: Date },
+      },
+    ],
     history: [
       {
         type: {

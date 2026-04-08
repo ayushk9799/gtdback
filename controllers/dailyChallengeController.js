@@ -1,21 +1,13 @@
 import DailyChallenge from "../models/DailyChallenge.js";
 import User from "../models/User.js";
 import Gameplay from "../models/Gameplay.js";
+import { deepMerge } from "../utils/deepMerge.js";
 
 // Get today's daily challenge
 export const getTodaysChallenge = async (req, res, next) => {
   try {
-    // Get user timezone from query parameter or header, default to UTC
-    // const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
-
-    // const challenge = await DailyChallenge.getTodaysChallenge(userTimezone);
-
-    // // Get user's current date for response
-    // const now = new Date();
-    // const userDate = new Date(now.toLocaleString("en-US", { timeZone: userTimezone }));
-    // const userToday = userDate.toISOString().split('T')[0];
-
     const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
+    const lang = req.query.lang || 'en';
 
     const formatter = new Intl.DateTimeFormat("en-CA", {
       timeZone: userTimezone,
@@ -24,7 +16,7 @@ export const getTodaysChallenge = async (req, res, next) => {
       day: "2-digit",
     });
 
-    const userToday = formatter.format(new Date());  // "2025-12-06"
+    const userToday = formatter.format(new Date());
     const challenge = await DailyChallenge.getTodaysChallenge(userTimezone);
 
 
@@ -37,13 +29,23 @@ export const getTodaysChallenge = async (req, res, next) => {
       });
     }
 
+    // Merge translated content if requested and available
+    let caseData = challenge.caseData;
+    let mp3Override = null;
+    if (lang !== 'en' && challenge.translations?.get?.(lang)) {
+      const langData = challenge.translations.get(lang);
+      caseData = deepMerge(caseData, langData);
+      if (langData.mp3) mp3Override = langData.mp3;
+    }
+
     res.json({
       success: true,
       challenge: {
         _id: challenge._id,
         date: challenge.date,
-        caseData: challenge.caseData,
+        caseData,
         metadata: challenge.metadata,
+        ...(mp3Override ? { mp3: mp3Override } : {}),
         createdAt: challenge.createdAt,
         updatedAt: challenge.updatedAt
       },
@@ -61,6 +63,7 @@ export const getChallengeByDate = async (req, res, next) => {
   try {
     const { date } = req.params;
     const { userId } = req.query;
+    const lang = req.query.lang || 'en';
 
     // Get user timezone from query parameter or header, default to UTC
     const userTimezone = req.query.timezone || req.headers['user-timezone'] || 'UTC';
@@ -97,23 +100,25 @@ export const getChallengeByDate = async (req, res, next) => {
     }
 
     // Check if user already completed this challenge (for ALL users, not just premium)
-    // This check must happen BEFORE the premium check so we show "already completed" 
-    // instead of "premium required" for challenges they've already played
     if (isBackdate && userId && user) {
       const completedEntry = user?.completedDailyChallenges?.find(
         dc => dc.dailyChallenge?.date === date
       );
       if (completedEntry) {
-        // Fetch the challenge data and user's gameplay for insights
         const challenge = await DailyChallenge.findOne({ date }).lean();
 
-        // Find the user's gameplay for this challenge
         const gameplay = await Gameplay.findOne({
           userId: userId,
           dailyChallengeId: challenge?._id,
           sourceType: 'dailyChallenge',
           status: 'completed',
         }).lean();
+
+        // Merge translated content for completed challenge response
+        let caseData = challenge?.caseData;
+        if (lang !== 'en' && challenge?.translations?.[lang]) {
+          caseData = deepMerge(caseData, challenge.translations[lang]);
+        }
 
         return res.status(409).json({
           success: false,
@@ -123,7 +128,7 @@ export const getChallengeByDate = async (req, res, next) => {
           challenge: challenge ? {
             _id: challenge._id,
             date: challenge.date,
-            caseData: challenge.caseData,
+            caseData,
             metadata: challenge.metadata,
           } : null,
           gameplay: gameplay ? {
@@ -136,7 +141,7 @@ export const getChallengeByDate = async (req, res, next) => {
       }
     }
 
-    // Non-premium users: NO backdate access at all (only reached if not already completed)
+    // Non-premium users: NO backdate access at all
     if (isBackdate && !isPremium) {
       return res.status(403).json({
         success: false,
@@ -146,12 +151,10 @@ export const getChallengeByDate = async (req, res, next) => {
       });
     }
 
-    // For premium backdate access, query directly; otherwise use existing method
     let challenge;
     if (isPremium && isBackdate) {
       challenge = await DailyChallenge.findOne({ date });
     } else {
-      // For today's date or non-backdate requests, use the model method
       challenge = await DailyChallenge.findOne({ date });
     }
 
@@ -164,12 +167,19 @@ export const getChallengeByDate = async (req, res, next) => {
       });
     }
 
+    // Merge translated content if requested and available
+    let caseData = challenge.caseData;
+    if (lang !== 'en' && challenge.translations?.get?.(lang)) {
+      const langData = challenge.translations.get(lang);
+      caseData = deepMerge(caseData, langData);
+    }
+
     res.json({
       success: true,
       challenge: {
         _id: challenge._id,
         date: challenge.date,
-        caseData: challenge.caseData,
+        caseData,
         metadata: challenge.metadata,
         createdAt: challenge.createdAt,
         updatedAt: challenge.updatedAt

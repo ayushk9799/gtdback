@@ -1,6 +1,8 @@
 import Quizz from "../models/Quizz.js";
 import QuizzCategory from "../models/QuizzCategory.js";
 import QuizzAttempt from "../models/QuizzAttempt.js";
+import { deepMerge } from "../utils/deepMerge.js";
+import mongoose from "mongoose";
 
 /**
  * Submit a quiz attempt
@@ -74,16 +76,24 @@ export const bulkCreateQuizzCategories = async (req, res, next) => {
  */
 export const getAllQuizzCategories = async (req, res, next) => {
     try {
-        const { userId } = req.query;
+        const { userId, lang = "en" } = req.query;
 
-        const categories = await QuizzCategory.find().sort({ name: 1 }).lean();
+        const categories = await QuizzCategory.find().sort({ quizzCount: -1, name: 1 }).lean();
+        
+        // Merge category name translations
+        const processedCategories = categories.map(cat => {
+            if (lang !== "en" && cat.translations?.[lang]) {
+                return deepMerge(cat, cat.translations[lang]);
+            }
+            return cat;
+        });
 
         if (userId) {
             // Optimization: Fetch all user attempts once (max 2000)
             const userAttempts = await QuizzAttempt.find({ userId }).select("quizzId").lean();
             const attemptedSet = new Set(userAttempts.map(a => a.quizzId.toString()));
 
-            const data = categories.map(cat => {
+            const data = processedCategories.map(cat => {
                 const attemptedCount = cat.quizzList.filter(id => attemptedSet.has(id.toString())).length;
                 return {
                     ...cat,
@@ -100,8 +110,66 @@ export const getAllQuizzCategories = async (req, res, next) => {
 
         res.status(200).json({
             success: true,
-            count: categories.length,
-            data: categories,
+            count: processedCategories.length,
+            data: processedCategories,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Get a preview of the next unsolved quiz for the user
+ * GET /api/quizz/next-preview?userId=xxx
+ */
+export const getNextQuizzPreview = async (req, res, next) => {
+    try {
+        const { userId } = req.query;
+
+        let query = {};
+
+        // If userId provided, exclude already attempted quizzes
+        if (userId) {
+            const userAttempts = await QuizzAttempt.find({ userId }).select("quizzId").lean();
+            const attemptedIds = userAttempts.map(a => a.quizzId);
+            if (attemptedIds.length > 0) {
+                query._id = { $nin: attemptedIds };
+            }
+        }
+
+        const nextQuiz = await Quizz.findOne(query)
+            .select("clinicalImages complain department category translations")
+            .sort({ createdAt: -1 })
+            .populate("category", "name translations")
+            .lean();
+
+        if (!nextQuiz) {
+            return res.status(200).json({
+                success: true,
+                data: null,
+            });
+        }
+
+        const lang = req.query.lang || "en";
+        let translatedData = nextQuiz;
+        if (lang !== "en" && nextQuiz.translations?.[lang]) {
+            translatedData = deepMerge(nextQuiz, nextQuiz.translations[lang]);
+        }
+        
+        // Also merge category translation if it was populated
+        if (lang !== "en" && translatedData.category?.translations?.[lang]) {
+            translatedData.category = deepMerge(translatedData.category, translatedData.category.translations[lang]);
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                _id: translatedData._id,
+                previewImage: translatedData.clinicalImages?.[0] || null,
+                complain: translatedData.complain,
+                department: translatedData.department,
+                categoryName: translatedData.category?.name || null,
+            },
         });
     } catch (error) {
         next(error);
@@ -280,7 +348,7 @@ export const getAllQuizzes = async (req, res, next) => {
 
             // Fetch the corresponding quizzes
             const quizzes = await Quizz.find({ _id: { $in: attemptedIds } })
-                .populate("category", "name")
+                .populate("category", "name translations")
                 .lean();
 
             // Create a map for quick lookup and attach attempt info
@@ -322,8 +390,21 @@ export const getAllQuizzes = async (req, res, next) => {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limitNum)
-            .populate("category", "name")
+            .populate("category", "name translations")
             .lean();
+
+        const lang = req.query.lang || "en";
+        const processedQuizzes = quizzes.map(q => {
+            let processed = q;
+            if (lang !== "en" && q.translations?.[lang]) {
+                processed = deepMerge(q, q.translations[lang]);
+            }
+            // Also merge category translation for listing
+            if (lang !== "en" && processed.category?.translations?.[lang]) {
+                processed.category = deepMerge(processed.category, processed.category.translations[lang]);
+            }
+            return processed;
+        });
 
         // If not excluding, and userId is provided, attach attempt info
         if (!isExcluding && userId && quizzes.length > 0) {
@@ -342,23 +423,83 @@ export const getAllQuizzes = async (req, res, next) => {
                 };
             });
 
-            quizzes.forEach(q => {
+            processedQuizzes.forEach(q => {
                 q.attempt = attemptMap[q._id.toString()] || null;
             });
         }
 
         const total = await Quizz.countDocuments(query);
-        const hasMore = skip + quizzes.length < total;
+        const hasMore = skip + processedQuizzes.length < total;
 
         res.status(200).json({
             success: true,
-            count: quizzes.length,
+            count: processedQuizzes.length,
             total,
             page: pageNum,
             hasMore,
-            data: quizzes,
+            data: processedQuizzes,
         });
     } catch (error) {
         next(error);
+    }
+};
+/**
+ * Update translation for a single quiz
+ * PUT /api/quizz/:id/translations/:lang
+ */
+export const updateQuizzTranslation = async (req, res, next) => {
+    try {
+        const { id, lang } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Valid quiz ObjectId required" });
+        }
+        if (!lang || typeof lang !== "string" || lang.length < 2) {
+            return res.status(400).json({ error: "Valid language code required (e.g. 'de')" });
+        }
+        
+        const doc = await Quizz.findById(id);
+        if (!doc) return res.status(404).json({ error: "Quizz not found" });
+        
+        doc.translations.set(lang, req.body);
+        await doc.save();
+        
+        return res.json({ success: true, message: `Translation '${lang}' saved for quiz ${id}` });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * Bulk update quiz translations
+ * PUT /api/quizz/translations/bulk
+ */
+export const bulkUpdateQuizzTranslations = async (req, res, next) => {
+    try {
+        const { lang, quizzes } = req.body;
+        if (!lang || typeof lang !== "string") {
+            return res.status(400).json({ error: "'lang' (string) is required" });
+        }
+        if (!Array.isArray(quizzes) || quizzes.length === 0) {
+            return res.status(400).json({ error: "'quizzes' array is required" });
+        }
+        
+        let updated = 0;
+        const errors = [];
+        for (const item of quizzes) {
+            try {
+                const quizId = item.quizzId || item._id;
+                if (!quizId) { errors.push({ error: "Missing quizzId" }); continue; }
+                const doc = await Quizz.findById(quizId);
+                if (!doc) { errors.push({ quizzId, error: "Not found" }); continue; }
+                doc.translations.set(lang, item.translation);
+                await doc.save();
+                updated++;
+            } catch (e) {
+                errors.push({ quizzId: item.quizzId, error: e.message });
+            }
+        }
+        return res.json({ success: true, updated, errors });
+    } catch (err) {
+        next(err);
     }
 };

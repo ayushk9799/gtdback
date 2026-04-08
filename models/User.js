@@ -108,22 +108,27 @@ UserSchema.pre('save', async function (next) {
 
 // Static: Return brief gameplay list for a user with minimal case info
 // Supports both Case and DailyChallenge gameplays
-UserSchema.statics.listGameplayBrief = async function (userId, status) {
+UserSchema.statics.listGameplayBrief = async function (userId, status, lang = "en") {
   if (!userId) throw new Error("userId is required");
   const filter = { userId };
   if (status) filter.status = status;
 
   const items = await Gameplay.find(filter)
     .sort({ createdAt: -1 })
-    .populate({ path: "caseId", select: "caseData caseTitle caseCategory" })
-    .populate({ path: "dailyChallengeId", select: "caseData metadata date" })
+    .populate({ path: "caseId", select: "caseData caseTitle caseCategory translations" })
+    .populate({ path: "dailyChallengeId", select: "caseData metadata date translations" })
     .lean();
+
+  const { deepMerge } = await import("../utils/deepMerge.js");
 
   return items.map((gp) => {
     const sourceType = gp.sourceType || "case";
 
     if (sourceType === "dailyChallenge") {
-      const challengeDoc = gp.dailyChallengeId || {};
+      let challengeDoc = gp.dailyChallengeId || {};
+      if (lang !== "en" && challengeDoc.translations?.[lang]) {
+        challengeDoc = deepMerge(challengeDoc, challengeDoc.translations[lang]);
+      }
       const caseData = challengeDoc.caseData || {};
       const metadata = challengeDoc.metadata || {};
       const title = metadata.title || caseData.caseTitle || "";
@@ -150,7 +155,10 @@ UserSchema.statics.listGameplayBrief = async function (userId, status) {
         },
       };
     } else {
-      const caseDoc = gp.caseId || {};
+      let caseDoc = gp.caseId || {};
+      if (lang !== "en" && caseDoc.translations?.[lang]) {
+        caseDoc = deepMerge(caseDoc, caseDoc.translations[lang]);
+      }
       const caseData = caseDoc.caseData || {};
       const title = caseDoc.caseTitle || caseData.caseTitle || "";
       const category = caseDoc.caseCategory || caseData.caseCategory || "";

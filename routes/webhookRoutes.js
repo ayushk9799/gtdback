@@ -39,7 +39,7 @@ router.post("/revenuecat", async (req, res) => {
         }
 
         // Find user by ID (RevenueCat app_user_id should be the MongoDB user ID)
-        const user = await User.findById(appUserId);
+        const user = await User.find({ email: appUserId });
         if (!user) {
             // Return 200 to prevent RevenueCat from retrying for non-existent users
             return res.status(200).json({ message: "User not found, skipping" });

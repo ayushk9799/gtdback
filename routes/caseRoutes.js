@@ -3,6 +3,7 @@ import Case from "../models/Case.js";
 import DailyChallenge from "../models/DailyChallenge.js";
 import Category from "../models/Category.js";
 import mongoose from "mongoose";
+import { deepMerge } from "../utils/deepMerge.js";
 // import { buildPublicUrl, presignPutForKey } from "../s3.js";
 
 const router = Router();
@@ -185,8 +186,16 @@ router.get("/diagnoses", async (req, res, next) => {
 router.get("/casewise/:caseId", async (req, res, next) => {
   try {
     const { caseId } = req.params;
+    const { lang = "en" } = req.query;
     const doc = await Case.findOne({ "caseData.caseId": caseId });
     if (!doc) return res.status(404).json({ error: "Case not found" });
+
+    if (lang !== "en" && doc.translations?.get?.(lang)) {
+      const translated = doc.toObject();
+      const langData = doc.translations.get(lang);
+      translated.caseData = deepMerge(translated.caseData, langData);
+      return res.json({ success: true, caseItem: translated });
+    }
     return res.json({ success: true, caseItem: doc });
   }
   catch (err) {
@@ -538,15 +547,81 @@ router.get("/summaries", async (req, res, next) => {
 });
 
 
+// PUT /api/cases/:id/translations/:lang -> upload translation for a single case
+router.put("/:id/translations/:lang", async (req, res, next) => {
+  try {
+    const { id, lang } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Valid case ObjectId required" });
+    }
+    if (!lang || typeof lang !== "string" || lang.length < 2) {
+      return res.status(400).json({ error: "Valid language code required (e.g. 'de')" });
+    }
+    const doc = await Case.findById(id);
+    if (!doc) return res.status(404).json({ error: "Case not found" });
+    doc.translations.set(lang, req.body);
+    await doc.save();
+    return res.json({ success: true, message: `Translation '${lang}' saved for case ${id}` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/cases/translations/bulk -> bulk upload translations for multiple cases
+router.put("/translations/bulk", async (req, res, next) => {
+  try {
+    const { lang, cases } = req.body;
+    if (!lang || typeof lang !== "string") {
+      return res.status(400).json({ error: "'lang' (string) is required" });
+    }
+    if (!Array.isArray(cases) || cases.length === 0) {
+      return res.status(400).json({ error: "'cases' array is required" });
+    }
+    let updated = 0;
+    const errors = [];
+    for (const item of cases) {
+      try {
+        const caseId = item.caseId || item._id;
+        if (!caseId) { errors.push({ error: "Missing caseId" }); continue; }
+        const doc = await Case.findById(caseId);
+        if (!doc) { errors.push({ caseId, error: "Not found" }); continue; }
+        doc.translations.set(lang, item.translation);
+        await doc.save();
+        updated++;
+      } catch (e) {
+        errors.push({ caseId: item.caseId, error: e.message });
+      }
+    }
+    return res.json({ success: true, updated, errors });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/cases/:id -> fetch a single case by ObjectId
+// Supports ?lang= query param for translated content
 router.get("/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
+    const lang = req.query.lang || "en";
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Valid case ObjectId required" });
     }
     const doc = await Case.findById(id);
     if (!doc) return res.status(404).json({ error: "Case not found" });
+
+    // Merge translated content if requested and available
+    if (lang !== "en" && doc.translations?.get?.(lang)) {
+      const translated = doc.toObject();
+      const langData = doc.translations.get(lang);
+      // Merge caseData text fields
+      translated.caseData = deepMerge(translated.caseData, langData);
+      // Merge mp3 if translation includes audio URLs
+      if (langData.mp3) {
+        translated.mp3 = { ...(translated.mp3 || {}), ...langData.mp3 };
+      }
+      return res.json({ success: true, case: translated });
+    }
     return res.json({ success: true, case: doc });
   } catch (err) {
     next(err);
