@@ -82,10 +82,15 @@ export const getAllQuizzCategories = async (req, res, next) => {
         
         // Merge category name translations
         const processedCategories = categories.map(cat => {
+            const originalName = cat.name;
+            let processed = cat;
             if (lang !== "en" && cat.translations?.[lang]) {
-                return deepMerge(cat, cat.translations[lang]);
+                processed = deepMerge(cat, cat.translations[lang]);
             }
-            return cat;
+            return {
+                ...processed,
+                originalName: originalName
+            };
         });
 
         if (userId) {
@@ -150,6 +155,7 @@ export const getNextQuizzPreview = async (req, res, next) => {
             });
         }
 
+        const originalCategoryName = nextQuiz.category?.name || null;
         const lang = req.query.lang || "en";
         let translatedData = nextQuiz;
         if (lang !== "en" && nextQuiz.translations?.[lang]) {
@@ -169,6 +175,7 @@ export const getNextQuizzPreview = async (req, res, next) => {
                 complain: translatedData.complain,
                 department: translatedData.department,
                 categoryName: translatedData.category?.name || null,
+                categoryOriginalName: originalCategoryName,
             },
         });
     } catch (error) {

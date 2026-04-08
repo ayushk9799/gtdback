@@ -78,6 +78,7 @@ async function getDailyChallengeLeaderboardByDate(date, userId, res, next) {
             rank: idx + 1,
             userId: entry.userId?._id || entry.userId,
             name: entry.userId?.name || "Unknown",
+            isPremium: !!entry.userId?.isPremium,
             score: entry.score || 0,
             completedAt: entry.completedAt,
         }));
@@ -90,10 +91,11 @@ async function getDailyChallengeLeaderboardByDate(date, userId, res, next) {
         if (userId) {
             const userRank = await DailyChallengeLeaderboard.getUserRankForDate(date, userId);
             if (userRank) {
-                const user = await User.findById(userId).select("name email").lean();
+                const user = await User.findById(userId).select("name email isPremium").lean();
                 me = {
                     userId,
                     name: user?.name || "",
+                    isPremium: !!user?.isPremium,
                     rank: userRank.rank,
                     score: userRank.score,
                     completedAt: userRank.completedAt,

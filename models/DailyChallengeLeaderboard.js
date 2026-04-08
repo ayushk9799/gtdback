@@ -70,7 +70,7 @@ DailyChallengeLeaderboardSchema.statics.getTopForDate = async function (date, li
     return this.find({ date })
         .sort({ score: -1, completedAt: 1 }) // Higher score first, earlier completion as tiebreaker
         .limit(limit)
-        .populate({ path: "userId", select: "name email" })
+        .populate({ path: "userId", select: "name email isPremium" })
         .lean();
 };
 
