@@ -20,7 +20,7 @@ dotenv.config({ path: './config/config.env' });
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY1;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY2;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
 const API_BASE = 'http://localhost:3002';
 const RETRY_COUNT = 2;

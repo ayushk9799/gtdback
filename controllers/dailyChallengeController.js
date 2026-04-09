@@ -45,6 +45,7 @@ export const getTodaysChallenge = async (req, res, next) => {
         date: challenge.date,
         caseData,
         metadata: challenge.metadata,
+        translations: challenge.translations,
         ...(mp3Override ? { mp3: mp3Override } : {}),
         createdAt: challenge.createdAt,
         updatedAt: challenge.updatedAt
@@ -181,6 +182,7 @@ export const getChallengeByDate = async (req, res, next) => {
         date: challenge.date,
         caseData,
         metadata: challenge.metadata,
+        translations: challenge.translations,
         createdAt: challenge.createdAt,
         updatedAt: challenge.updatedAt
       },
@@ -281,6 +283,39 @@ export const updateDailyChallenge = async (req, res, next) => {
         createdAt: challenge.createdAt,
         updatedAt: challenge.updatedAt
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update daily challenge translation (admin function)
+export const updateDailyChallengeTranslation = async (req, res, next) => {
+  try {
+    const { date, lang } = req.params;
+    const translation = req.body;
+
+    const challenge = await DailyChallenge.findOne({ date });
+    if (!challenge) {
+      return res.status(404).json({
+        success: false,
+        message: `No daily challenge found for date: ${date}`
+      });
+    }
+
+    if (!challenge.translations) {
+      challenge.translations = new Map();
+    }
+
+    challenge.translations.set(lang, translation);
+    challenge.markModified('translations');
+    await challenge.save();
+
+    res.json({
+      success: true,
+      message: `Translation for ${lang} updated successfully`,
+      date: challenge.date,
+      lang
     });
   } catch (error) {
     next(error);

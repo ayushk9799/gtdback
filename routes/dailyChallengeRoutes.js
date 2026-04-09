@@ -6,7 +6,8 @@ import {
   updateDailyChallenge,
   deleteDailyChallenge,
   getAllDailyChallenges,
-  populateDailyChallenges
+  populateDailyChallenges,
+  updateDailyChallengeTranslation
 } from "../controllers/dailyChallengeController.js";
 import {
   getTodayLeaderboard,
@@ -36,6 +37,9 @@ router.post("/", createDailyChallenge);
 
 // PUT /api/daily-challenge/:date - Update daily challenge
 router.put("/:date", updateDailyChallenge);
+
+// PUT /api/daily-challenge/:date/translations/:lang - Update daily challenge translation
+router.put("/:date/translations/:lang", updateDailyChallengeTranslation);
 
 // DELETE /api/daily-challenge/:date - Delete daily challenge
 router.delete("/:date", deleteDailyChallenge);
