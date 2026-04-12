@@ -14,6 +14,68 @@ const appleJwksClient = jwksClient({
 });
 
 
+// GET /api/login/web/google/loginSignUp - Login with Google Auth Code (Web)
+router.get("/web/google/loginSignUp", async (req, res) => {
+  try {
+    const { code } = req.query;
+
+    if (!code) {
+      return res.status(400).json({ error: "Code is required" });
+    }
+
+    const client = new OAuth2Client(
+      process.env.GOOGLE_WEB_CLIENT_ID,
+      process.env.GOOGLE_WEB_CLIENT_SECRET,
+      "http://localhost:5173" // Matches the redirect_uri in the frontend LoginPage.jsx
+    );
+
+    // Exchange auth code for tokens
+    const { tokens } = await client.getToken(code);
+    client.setCredentials(tokens);
+
+    // Verify the identity token
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_WEB_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    // Check if user exists
+    let user = await User.findOne({ email: payload.email });
+    let isNewUser = false;
+
+    if (!user) {
+      isNewUser = true;
+      user = await User.create({
+        email: payload.email,
+        name: payload.name,
+        platform: "web",
+      });
+    }
+
+    // Return format matching frontend's expectatons
+    res.json({
+      success: true,
+      isNewUser,
+      user: {
+        _id: user._id,
+        id: user._id, // Adding both for compatibility
+        email: user.email,
+        name: user.name,
+        platform: user.platform,
+      },
+    });
+  } catch (error) {
+    console.error("Error exchanging Google code:", error.message);
+    res.status(401).json({
+      success: false,
+      error: "Authentication failed",
+      details: error.message
+    });
+  }
+});
+
 // Google authentication route
 router.post("/google/loginSignUp", async (req, res) => {
   try {

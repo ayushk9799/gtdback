@@ -65,7 +65,7 @@ const UserSchema = new mongoose.Schema({
   },
   platform: {
     type: String,
-    enum: ["android", "ios"],
+    enum: ["android", "ios", "web"],
   },
   // Heart management fields
   hearts: {
