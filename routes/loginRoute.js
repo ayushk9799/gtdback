@@ -26,7 +26,7 @@ router.get("/web/google/loginSignUp", async (req, res) => {
     const client = new OAuth2Client(
       process.env.GOOGLE_WEB_CLIENT_ID,
       process.env.GOOGLE_WEB_CLIENT_SECRET,
-      "https://diagnoseit.in" // Matches the redirect_uri in the frontend LoginPage.jsx
+      "https://www.diagnoseit.in" // Matches the redirect_uri in the frontend LoginPage.jsx
     );
 
     // Exchange auth code for tokens
