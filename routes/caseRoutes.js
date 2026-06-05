@@ -2,6 +2,8 @@ import { Router } from "express";
 import Case from "../models/Case.js";
 import DailyChallenge from "../models/DailyChallenge.js";
 import Category from "../models/Category.js";
+import User from "../models/User.js";
+import Gameplay from "../models/Gameplay.js";
 import mongoose from "mongoose";
 import { deepMerge } from "../utils/deepMerge.js";
 // import { buildPublicUrl, presignPutForKey } from "../s3.js";
@@ -50,6 +52,56 @@ const extractDiagnosisSummary = (caseDoc) => {
     correctDiagnosis,
   };
 };
+
+// GET /api/cases/first -> first unplayed case for a user, or first case fallback
+// Optional query: ?userId=ObjectId
+router.get("/first", async (req, res, next) => {
+  try {
+    const { userId } = req.query || {};
+    const completedCaseIds = new Set();
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const user = await User.findById(userId).select("_id completedCases");
+      if (user) {
+        for (const item of user.completedCases || []) {
+          if (item?.case) completedCaseIds.add(item.case.toString());
+        }
+      }
+
+      const finished = await Gameplay.find({
+        userId,
+        sourceType: "case",
+        status: "completed",
+        caseId: { $ne: null },
+      }).select("caseId");
+
+      for (const gp of finished) {
+        if (gp.caseId) completedCaseIds.add(gp.caseId.toString());
+      }
+    }
+
+    const query = completedCaseIds.size
+      ? { _id: { $nin: [...completedCaseIds] } }
+      : {};
+    const doc = await Case.findOne(query).sort({ _id: 1 }).select("_id caseData.caseId caseData.caseTitle caseData.caseCategory");
+
+    if (!doc) {
+      return res.status(404).json({ error: "No available cases found" });
+    }
+
+    return res.json({
+      success: true,
+      case: {
+        id: doc._id,
+        businessCaseId: doc.caseData?.caseId || null,
+        title: doc.caseData?.caseTitle || null,
+        category: doc.caseData?.caseCategory || null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // POST /api/cases/bulk -> upload array of cases
 // Accepts either body as an array or { cases: [...] }
@@ -639,5 +691,4 @@ router.get("/:id", async (req, res, next) => {
 
 
 export default router;
-
 
