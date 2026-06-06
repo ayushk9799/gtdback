@@ -178,7 +178,7 @@ router.post("/apple/loginSignUp", async (req, res) => {
         }
       );
     });
-
+//  console.log(decodedToken);
     // Extract email from token or use provided email
     // Apple only provides email on first sign-in, so we need to handle both cases
     const email = decodedToken.email || providedEmail;
@@ -210,7 +210,7 @@ router.post("/apple/loginSignUp", async (req, res) => {
       isNewUser = true;
       user = await User.create({
         email,
-        name: displayName,
+        name: displayName|| "Anonymous",
         platform: platform || 'ios',
       });
     }
@@ -225,7 +225,6 @@ router.post("/apple/loginSignUp", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error verifying Apple token:", error.message);
     res.status(401).json({
       success: false,
       error: "Invalid token",

@@ -6,6 +6,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please add a name"],
     trim: true,
+    default:"Anonymous"
   },
   email: {
     type: String,

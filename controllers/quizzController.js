@@ -302,6 +302,7 @@ export const getAllQuizzes = async (req, res, next) => {
 
         const isExcluding = excludeAttempted === 'true';
         const isOnlyAttempted = onlyAttempted === 'true';
+        const lang = req.query.lang || "en";
 
         // Scalability Optimization: If excludeAttempted is true, fetch user's attempts first
         if (isExcluding && userId) {
@@ -371,10 +372,21 @@ export const getAllQuizzes = async (req, res, next) => {
             // Sort quizzes to match the attempt order (most recent first)
             const orderedQuizzes = attemptedIds.map(id => {
                 const quiz = quizzes.find(q => q._id.toString() === id.toString());
-                if (quiz) {
-                    quiz.attempt = attemptMap[id.toString()];
+                if (!quiz) {
+                    return null;
                 }
-                return quiz;
+
+                let processed = quiz;
+                if (lang !== "en" && quiz.translations?.[lang]) {
+                    processed = deepMerge(quiz, quiz.translations[lang]);
+                }
+
+                if (lang !== "en" && processed.category?.translations?.[lang]) {
+                    processed.category = deepMerge(processed.category, processed.category.translations[lang]);
+                }
+
+                processed.attempt = attemptMap[id.toString()];
+                return processed;
             }).filter(Boolean);
 
             const hasMore = skip + orderedQuizzes.length < totalAttempts;
@@ -400,7 +412,6 @@ export const getAllQuizzes = async (req, res, next) => {
             .populate("category", "name translations")
             .lean();
 
-        const lang = req.query.lang || "en";
         const processedQuizzes = quizzes.map(q => {
             let processed = q;
             if (lang !== "en" && q.translations?.[lang]) {
