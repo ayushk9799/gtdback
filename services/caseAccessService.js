@@ -22,6 +22,29 @@ export const getHistoricalAccessKeys = (user) => {
   return [...keys];
 };
 
+// Compatibility value for app versions that still use the old heart UI.
+// Case access remains the single source of truth, so this value is derived and
+// must never be stored or decremented separately.
+export const getLegacyHearts = (user) => {
+  if (user?.isPremium) return 100;
+
+  const used = getHistoricalAccessKeys(user || {}).length;
+  return Math.max(0, FREE_CASE_LIMIT - used);
+};
+
+export const withLegacyHearts = (user) => {
+  if (!user) return user;
+
+  const plainUser = typeof user.toObject === "function"
+    ? user.toObject()
+    : { ...user };
+
+  return {
+    ...plainUser,
+    hearts: getLegacyHearts(plainUser),
+  };
+};
+
 export const canGrantCaseAccess = ({ isPremium, accessKeys, accessKey }) =>
   Boolean(isPremium)
   || accessKeys.includes(accessKey)

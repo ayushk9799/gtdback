@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import Category from "../models/Category.js";
 import Gameplay from "../models/Gameplay.js";
 import TopUser from "../models/TopUser.js";
+import { getLegacyHearts, withLegacyHearts } from "../services/caseAccessService.js";
 
 
 // GET /api/users/:userId/next-cases
@@ -67,7 +68,7 @@ export const getUser = async (req, res, next) => {
       await user.save();
     }
 
-    res.status(200).json(user);
+    res.status(200).json(withLegacyHearts(user));
   } catch (err) {
     next(err);
   }
@@ -79,7 +80,28 @@ export const updateUser = async (req, res, next) => {
     const { userID } = req.params;
     const { user } = req.body;
     const updatedUser = await User.findByIdAndUpdate(userID, user, { new: true });
-    res.status(200).json(updatedUser);
+    if (!updatedUser) return res.status(404).json({ error: "User not found" });
+
+    res.status(200).json(withLegacyHearts(updatedUser));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/users/:userID/hearts/use
+// Compatibility endpoint for older app versions. Case access is already
+// reserved by gameplay creation/submission, so this must not decrement a
+// second counter.
+export const useHeart = async (req, res, next) => {
+  try {
+    const { userID } = req.params;
+    const user = await User.findById(userID)
+      .select("isPremium freeCaseAccessKeys completedCases.case completedDailyChallenges.dailyChallenge")
+      .lean();
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    return res.status(200).json({ hearts: getLegacyHearts(user) });
   } catch (err) {
     next(err);
   }

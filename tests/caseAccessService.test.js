@@ -4,7 +4,9 @@ import {
   FREE_CASE_LIMIT,
   canGrantCaseAccess,
   getHistoricalAccessKeys,
+  getLegacyHearts,
   makeCaseAccessKey,
+  withLegacyHearts,
 } from "../services/caseAccessService.js";
 
 test("free users can access their first and second distinct cases", () => {
@@ -55,4 +57,58 @@ test("historical regular and daily completions are deduplicated", () => {
   });
 
   assert.deepEqual(keys.sort(), ["case:case-id", "dailyChallenge:daily-id"]);
+});
+
+test("legacy hearts expose two available cases for a new free user", () => {
+  assert.equal(getLegacyHearts({
+    isPremium: false,
+    freeCaseAccessKeys: [],
+    completedCases: [],
+    completedDailyChallenges: [],
+  }), 2);
+});
+
+test("legacy hearts count existing users' historical cases without duplicates", () => {
+  const caseId = { toString: () => "case-id" };
+  assert.equal(getLegacyHearts({
+    isPremium: false,
+    freeCaseAccessKeys: [makeCaseAccessKey("case", caseId)],
+    completedCases: [{ case: caseId }],
+    completedDailyChallenges: [],
+  }), 1);
+});
+
+test("legacy hearts reach zero after two regular or daily cases", () => {
+  assert.equal(getLegacyHearts({
+    isPremium: false,
+    freeCaseAccessKeys: ["case:first"],
+    completedCases: [],
+    completedDailyChallenges: [{ dailyChallenge: "second" }],
+  }), 0);
+});
+
+test("legacy hearts never become negative for established users", () => {
+  assert.equal(getLegacyHearts({
+    isPremium: false,
+    freeCaseAccessKeys: ["case:first", "case:second", "case:third"],
+  }), 0);
+});
+
+test("legacy hearts remain unlimited for premium users", () => {
+  assert.equal(getLegacyHearts({
+    isPremium: true,
+    freeCaseAccessKeys: ["case:first", "case:second", "case:third"],
+  }), 100);
+});
+
+test("legacy hearts are added to user responses without mutating the source", () => {
+  const user = {
+    _id: "user-id",
+    isPremium: false,
+    freeCaseAccessKeys: ["case:first"],
+  };
+  const response = withLegacyHearts(user);
+
+  assert.equal(response.hearts, 1);
+  assert.equal(user.hearts, undefined);
 });
