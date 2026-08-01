@@ -68,44 +68,17 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ["android", "ios", "web"],
   },
-  // Heart management fields
-  hearts: {
-    type: Number,
-    default: 2,
+  // Distinct regular/daily cases granted to a free user. This is an access
+  // reservation list, not a consumable balance.
+  freeCaseAccessKeys: {
+    type: [String],
+    default: [],
   },
   timezone: {
     type: String,
     default: null,
   },
-  // Referral system
-  referralCode: {
-    type: String,
-    unique: true,
-    sparse: true,  // Allows null but enforces uniqueness when present
-  },
-  appliedReferralCode: {
-    type: String,
-    default: null,  // Stores the referral code this user has applied (only one allowed)
-  },
-
 }, { timestamps: true });
-
-// Pre-save hook to generate unique referral code for new users
-UserSchema.pre('save', async function (next) {
-  if (this.isNew && !this.referralCode) {
-    const prefix = (this.name || 'USER').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'X');
-    let code;
-    let exists = true;
-    // Keep generating until we find a unique code
-    while (exists) {
-      const suffix = Math.floor(1000 + Math.random() * 9000);
-      code = `${prefix}${suffix}`;
-      exists = await this.constructor.findOne({ referralCode: code });
-    }
-    this.referralCode = code;
-  }
-  next();
-});
 
 // Static: Return brief gameplay list for a user with minimal case info
 // Supports both Case and DailyChallenge gameplays

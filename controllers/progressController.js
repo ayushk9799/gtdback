@@ -237,5 +237,3 @@ export const getDepartmentProgress = async (req, res, next) => {
     next(err);
   }
 };
-
-

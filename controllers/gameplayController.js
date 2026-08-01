@@ -5,6 +5,7 @@ import User from "../models/User.js";
 import TopUser from "../models/TopUser.js";
 import DailyChallengeLeaderboard from "../models/DailyChallengeLeaderboard.js";
 import { deepMerge } from "../utils/deepMerge.js";
+import { reserveCaseAccess, sendCaseLimitResponse } from "../services/caseAccessService.js";
 
 function computeTotals(points) {
   const { diagnosis = 0, tests = 0, treatment = 0, penalties = 0 } = points || {};
@@ -78,6 +79,13 @@ export const startOrGetGameplay = async (req, res, next) => {
       if (!userExists) return res.status(404).json({ error: "User not found" });
       if (!caseExists) return res.status(404).json({ error: "Case not found" });
 
+      const access = await reserveCaseAccess({
+        userId,
+        sourceType: "case",
+        resourceId: caseId,
+      });
+      if (!access.allowed) return sendCaseLimitResponse(res);
+
       let gameplay = await Gameplay.findOne({ userId, caseId, sourceType: "case" });
       if (!gameplay) {
         gameplay = await Gameplay.create({ userId, caseId, sourceType: "case" });
@@ -96,6 +104,13 @@ export const startOrGetGameplay = async (req, res, next) => {
 
       if (!userExists) return res.status(404).json({ error: "User not found" });
       if (!challengeExists) return res.status(404).json({ error: "Daily challenge not found" });
+
+      const access = await reserveCaseAccess({
+        userId,
+        sourceType: "dailyChallenge",
+        resourceId: dailyChallengeId,
+      });
+      if (!access.allowed) return sendCaseLimitResponse(res);
 
       // Check if this is a backdate play (for premium users practicing old challenges)
       const isBackdatePlay = req.body.isBackdatePlay === true;
@@ -289,6 +304,20 @@ export const completeGameplay = async (req, res, next) => {
     const wasCompletedBefore = gameplay.status === "completed";
     const prevTotal = gameplay.points?.total || 0;
 
+    // Completing through the legacy endpoint must enforce the same limit.
+    if (!wasCompletedBefore) {
+      const gameplaySourceType = gameplay.sourceType;
+      const resourceId = gameplaySourceType === "dailyChallenge"
+        ? gameplay.dailyChallengeId
+        : gameplay.caseId;
+      const access = await reserveCaseAccess({
+        userId: gameplay.userId,
+        sourceType: gameplaySourceType,
+        resourceId,
+      });
+      if (!access.allowed) return sendCaseLimitResponse(res);
+    }
+
     if (typeof penaltiesDelta === "number") {
       gameplay.points.penalties = (gameplay.points.penalties || 0) + penaltiesDelta;
     }
@@ -474,6 +503,22 @@ export const submitSelections = async (req, res, next) => {
     // Snapshot prior state for delta computation against User.cumulativePoints
     const wasCompletedBefore = gameplay.status === "completed";
     const prevTotal = gameplay.points?.total || 0;
+
+    // Direct submit calls must enforce the same two-case rule as gameplay
+    // creation. Replays are already represented by completed gameplay and are
+    // allowed without reserving another slot.
+    if (complete && !wasCompletedBefore) {
+      const gameplaySourceType = gameplay.sourceType;
+      const resourceId = gameplaySourceType === "dailyChallenge"
+        ? gameplay.dailyChallengeId
+        : gameplay.caseId;
+      const access = await reserveCaseAccess({
+        userId: gameplay.userId,
+        sourceType: gameplaySourceType,
+        resourceId,
+      });
+      if (!access.allowed) return sendCaseLimitResponse(res);
+    }
 
 
     // If re-completing (reattempt), save the NEW attempt data to attempts[] array

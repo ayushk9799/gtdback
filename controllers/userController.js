@@ -63,20 +63,6 @@ export const getUser = async (req, res, next) => {
       needsSave = true;
     }
 
-    // Generate referral code for existing users who don't have one
-    if (!user.referralCode) {
-      const prefix = (user.name || 'USER').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'X');
-      let code;
-      let exists = true;
-      while (exists) {
-        const suffix = Math.floor(1000 + Math.random() * 9000);
-        code = `${prefix}${suffix}`;
-        exists = await User.findOne({ referralCode: code });
-      }
-      user.referralCode = code;
-      needsSave = true;
-    }
-
     if (needsSave) {
       await user.save();
     }
@@ -128,28 +114,6 @@ export const deleteUser = async (req, res, next) => {
       success: true,
       message: "Account and all associated data deleted successfully"
     });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// POST /api/users/:userID/hearts/use
-// Decrements user's heart count by 1
-export const useHeart = async (req, res, next) => {
-  try {
-    const { userID } = req.params;
-
-    const user = await User.findById(userID);
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    if (user.hearts <= 0) {
-      return res.status(400).json({ error: "No hearts remaining" });
-    }
-
-    user.hearts = user.hearts - 1;
-    await user.save();
-
-    res.status(200).json({ hearts: user.hearts });
   } catch (err) {
     next(err);
   }
