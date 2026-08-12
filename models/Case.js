@@ -6,6 +6,12 @@ const CaseSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     required: true,
   },
+  // Per-language translation overrides: { "de": { caseTitle: "...", steps: [...], mp3: {...} } }
+  translations: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: new Map(),
+  },
   mp3: {
     basicspeech: { type: String, default: null },
     vitalsspeech: { type: String, default: null },

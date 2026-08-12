@@ -6,6 +6,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please add a name"],
     trim: true,
+    default:"Anonymous"
   },
   email: {
     type: String,
@@ -65,69 +66,43 @@ const UserSchema = new mongoose.Schema({
   },
   platform: {
     type: String,
-    enum: ["android", "ios"],
+    enum: ["android", "ios", "web"],
   },
-  // Heart management fields
-  hearts: {
-    type: Number,
-    default: 1,
-  },
-  heartsUpdatedAt: {
-    type: Date,
-    default: Date.now,
+  // Distinct regular/daily cases granted to a free user. This is an access
+  // reservation list, not a consumable balance.
+  freeCaseAccessKeys: {
+    type: [String],
+    default: [],
   },
   timezone: {
     type: String,
-    default: null,  // e.g., "America/New_York", "Asia/Kolkata"
+    default: null,
   },
-  // Referral system
-  referralCode: {
-    type: String,
-    unique: true,
-    sparse: true,  // Allows null but enforces uniqueness when present
-  },
-  appliedReferralCode: {
-    type: String,
-    default: null,  // Stores the referral code this user has applied (only one allowed)
-  },
-
 }, { timestamps: true });
-
-// Pre-save hook to generate unique referral code for new users
-UserSchema.pre('save', async function (next) {
-  if (this.isNew && !this.referralCode) {
-    const prefix = (this.name || 'USER').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'X');
-    let code;
-    let exists = true;
-    // Keep generating until we find a unique code
-    while (exists) {
-      const suffix = Math.floor(1000 + Math.random() * 9000);
-      code = `${prefix}${suffix}`;
-      exists = await this.constructor.findOne({ referralCode: code });
-    }
-    this.referralCode = code;
-  }
-  next();
-});
 
 // Static: Return brief gameplay list for a user with minimal case info
 // Supports both Case and DailyChallenge gameplays
-UserSchema.statics.listGameplayBrief = async function (userId, status) {
+UserSchema.statics.listGameplayBrief = async function (userId, status, lang = "en") {
   if (!userId) throw new Error("userId is required");
   const filter = { userId };
   if (status) filter.status = status;
 
   const items = await Gameplay.find(filter)
     .sort({ createdAt: -1 })
-    .populate({ path: "caseId", select: "caseData caseTitle caseCategory" })
-    .populate({ path: "dailyChallengeId", select: "caseData metadata date" })
+    .populate({ path: "caseId", select: "caseData caseTitle caseCategory translations" })
+    .populate({ path: "dailyChallengeId", select: "caseData metadata date translations" })
     .lean();
+
+  const { deepMerge } = await import("../utils/deepMerge.js");
 
   return items.map((gp) => {
     const sourceType = gp.sourceType || "case";
 
     if (sourceType === "dailyChallenge") {
-      const challengeDoc = gp.dailyChallengeId || {};
+      let challengeDoc = gp.dailyChallengeId || {};
+      if (lang !== "en" && challengeDoc.translations?.[lang]) {
+        challengeDoc = deepMerge(challengeDoc, challengeDoc.translations[lang]);
+      }
       const caseData = challengeDoc.caseData || {};
       const metadata = challengeDoc.metadata || {};
       const title = metadata.title || caseData.caseTitle || "";
@@ -154,7 +129,10 @@ UserSchema.statics.listGameplayBrief = async function (userId, status) {
         },
       };
     } else {
-      const caseDoc = gp.caseId || {};
+      let caseDoc = gp.caseId || {};
+      if (lang !== "en" && caseDoc.translations?.[lang]) {
+        caseDoc = deepMerge(caseDoc, caseDoc.translations[lang]);
+      }
       const caseData = caseDoc.caseData || {};
       const title = caseDoc.caseTitle || caseData.caseTitle || "";
       const category = caseDoc.caseCategory || caseData.caseCategory || "";

@@ -15,7 +15,6 @@ import progressRoutes from "./routes/progressRoutes.js";
 import dailyChallengeRoutes from "./routes/dailyChallengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
-import referralRoutes from "./routes/referralRoutes.js";
 import quizzRoutes from "./routes/quizzRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import { startScheduler, stopScheduler } from "./jobs/notificationScheduler.js";
@@ -63,7 +62,6 @@ app.use("/api", progressRoutes);
 app.use("/api/daily-challenge", dailyChallengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/notification", notificationRoutes);
-app.use("/api/referral", referralRoutes);
 app.use("/api/quizz", quizzRoutes);
 app.use("/api/webhook", webhookRoutes);
 app.use("*", (req, res) => res.status(404).json({ msg: "Not found" }));
@@ -92,4 +90,3 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-

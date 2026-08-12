@@ -14,6 +14,68 @@ const appleJwksClient = jwksClient({
 });
 
 
+// GET /api/login/web/google/loginSignUp - Login with Google Auth Code (Web)
+router.get("/web/google/loginSignUp", async (req, res) => {
+  try {
+    const { code } = req.query;
+
+    if (!code) {
+      return res.status(400).json({ error: "Code is required" });
+    }
+
+    const client = new OAuth2Client(
+      process.env.GOOGLE_WEB_CLIENT_ID,
+      process.env.GOOGLE_WEB_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI || "https://www.diagnoseit.in"
+    );
+
+    // Exchange auth code for tokens
+    const { tokens } = await client.getToken(code);
+    client.setCredentials(tokens);
+
+    // Verify the identity token
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_WEB_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    // Check if user exists
+    let user = await User.findOne({ email: payload.email });
+    let isNewUser = false;
+
+    if (!user) {
+      isNewUser = true;
+      user = await User.create({
+        email: payload.email,
+        name: payload.name,
+        platform: "web",
+      });
+    }
+
+    // Return format matching frontend's expectatons
+    res.json({
+      success: true,
+      isNewUser,
+      user: {
+        _id: user._id,
+        id: user._id, // Adding both for compatibility
+        email: user.email,
+        name: user.name,
+        platform: user.platform,
+      },
+    });
+  } catch (error) {
+    console.error("Error exchanging Google code:", error.message);
+    res.status(401).json({
+      success: false,
+      error: "Authentication failed",
+      details: error.message
+    });
+  }
+});
+
 // Google authentication route
 router.post("/google/loginSignUp", async (req, res) => {
   try {
@@ -116,7 +178,7 @@ router.post("/apple/loginSignUp", async (req, res) => {
         }
       );
     });
-
+//  console.log(decodedToken);
     // Extract email from token or use provided email
     // Apple only provides email on first sign-in, so we need to handle both cases
     const email = decodedToken.email || providedEmail;
@@ -148,7 +210,7 @@ router.post("/apple/loginSignUp", async (req, res) => {
       isNewUser = true;
       user = await User.create({
         email,
-        name: displayName,
+        name: displayName|| "Anonymous",
         platform: platform || 'ios',
       });
     }
@@ -163,7 +225,6 @@ router.post("/apple/loginSignUp", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error verifying Apple token:", error.message);
     res.status(401).json({
       success: false,
       error: "Invalid token",

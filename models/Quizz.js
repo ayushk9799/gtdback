@@ -25,6 +25,12 @@ const QuizzSchema = new mongoose.Schema({
     department: {
         type: String,
     },
+    // Per-language translation overrides: { "de": { complain: "...", options: [...], explain: {...} } }
+    translations: {
+        type: Map,
+        of: mongoose.Schema.Types.Mixed,
+        default: new Map(),
+    },
     explain: {
         type: mongoose.Schema.Types.Mixed,
         default: null,

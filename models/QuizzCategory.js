@@ -16,6 +16,12 @@ const QuizzCategorySchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Quizz",
     }],
+    // Per-language translation overrides: { "de": { name: "..." } }
+    translations: {
+        type: Map,
+        of: mongoose.Schema.Types.Mixed,
+        default: new Map(),
+    },
 }, { timestamps: true });
 
 // Ensure quizzCount stays in sync with quizzList length

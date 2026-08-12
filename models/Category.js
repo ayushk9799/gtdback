@@ -19,7 +19,11 @@ const CategorySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Case",
   }],
-
+  translations: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: new Map(),
+  },
 });
 
 // Ensure caseCount stays in sync with caseList length
