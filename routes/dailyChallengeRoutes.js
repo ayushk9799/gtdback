@@ -32,7 +32,7 @@ router.get("/:date", getChallengeByDate);
 
 
 // Admin routes (for managing challenges)
-// POST /api/daily-challenge - Create new daily challenge
+// POST /api/daily-challenge - Create a daily challenge, including optional translations
 router.post("/", createDailyChallenge);
 
 // PUT /api/daily-challenge/:date - Update daily challenge

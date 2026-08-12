@@ -199,12 +199,24 @@ export const getChallengeByDate = async (req, res, next) => {
 // Create a new daily challenge (admin function)
 export const createDailyChallenge = async (req, res, next) => {
   try {
-    const { date, caseData, metadata } = req.body;
+    const { date, caseData, metadata, translations } = req.body;
 
     if (!date || !caseData) {
       return res.status(400).json({
         success: false,
         message: "Date and caseData are required"
+      });
+    }
+
+    if (
+      translations !== undefined &&
+      (translations === null ||
+        typeof translations !== 'object' ||
+        Array.isArray(translations))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "translations must be an object keyed by language code"
       });
     }
 
@@ -220,6 +232,7 @@ export const createDailyChallenge = async (req, res, next) => {
     const challenge = new DailyChallenge({
       date,
       caseData,
+      ...(translations !== undefined ? { translations } : {}),
       metadata: metadata || {
         difficulty: 'medium',
         category: 'general',
@@ -238,6 +251,7 @@ export const createDailyChallenge = async (req, res, next) => {
         date: challenge.date,
         caseData: challenge.caseData,
         metadata: challenge.metadata,
+        translations: challenge.translations,
         createdAt: challenge.createdAt,
         updatedAt: challenge.updatedAt
       }
